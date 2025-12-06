@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>排行榜 - Flopsys AI</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-left">
+            <div class="logo" data-lang="logo">Flopsys AI</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
+                <a href="leaderboard.html" class="nav-link active" data-lang="leaderboard">排行榜</a>
+                <a href="about.html" class="nav-link" data-lang="about">About Us</a>
+            </div>
+        </div>
+        <div class="nav-right">
+            <select class="lang-select" id="lang-select">
+                <option value="zh">🇨🇳 中文</option>
+                <option value="en">🇺🇸 English</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="fr">🇫🇷 Français</option>
+            </select>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1 data-lang="leaderboard-title">性能排行榜</h1>
+            <p data-lang="leaderboard-subtitle">比较不同硬件配置的ROI表现</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 筛选配置 -->
+            <section class="controls-section">
+                <div class="section-title" data-lang="filter-config">筛选配置</div>
+                <div class="leaderboard-filter-grid">
+                    <div class="control-group">
+                        <label for="leaderboard-model-select" data-lang="model">模型选择</label>
+                        <select id="leaderboard-model-select">
+                            <option value="" data-lang="select-model">请选择模型</option>
+                            <option value="K2-thinking">K2-thinking</option>
+                            <option value="DeepSeekR1">DeepSeekR1</option>
+                            <option value="LLAMA4-behemoh">LLAMA4-behemoh</option>
+                            <option value="GPT-oss120b">GPT-oss120b</option>
+                        </select>
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="price-input-huawei" data-lang="price-huawei">华为卡价格 ($/h)</label>
+                        <input type="number" id="price-input-huawei" placeholder="2.50" step="0.01">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="price-input-nvidia" data-lang="price-nvidia">NVIDIA卡价格 ($/h)</label>
+                        <input type="number" id="price-input-nvidia" placeholder="3.00" step="0.01">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label for="price-input-amd" data-lang="price-amd">AMD卡价格 ($/h)</label>
+                        <input type="number" id="price-input-amd" placeholder="2.00" step="0.01">
+                    </div>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn btn-primary" id="generate-ranking-btn" data-lang="generate-ranking">生成排行榜</button>
+                </div>
+            </section>
+
+            <!-- 排行榜表格 -->
+            <section class="leaderboard-section">
+                <div class="section-title" data-lang="ranking-results">排行榜结果</div>
+                <div class="leaderboard-table-wrapper">
+                    <table class="leaderboard-table" id="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th data-lang="rank">排名</th>
+                                <th data-lang="hardware">硬件配置</th>
+                                <th data-lang="card-count">卡数量</th>
+                                <th data-lang="optimal-config">最优配置</th>
+                                <th data-lang="tps-per-dollar">TPS/$</th>
+                                <th data-lang="roi">ROI</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leaderboard-tbody">
+                            <tr>
+                                <td colspan="6" class="empty-state" data-lang="no-ranking">
+                                    请点击"生成排行榜"查看结果
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script type="module" src="js/i18n.js"></script>
+    <script type="module" src="js/data.js"></script>
+    <script type="module" src="js/leaderboard.js"></script>
+</body>
+</html>

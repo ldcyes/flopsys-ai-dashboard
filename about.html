@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>About Us - Flopsys AI</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-left">
+            <div class="logo" data-lang="logo">Flopsys AI</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
+                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">排行榜</a>
+                <a href="about.html" class="nav-link active" data-lang="about">About Us</a>
+            </div>
+        </div>
+        <div class="nav-right">
+            <select class="lang-select" id="lang-select">
+                <option value="zh">🇨🇳 中文</option>
+                <option value="en">🇺🇸 English</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="fr">🇫🇷 Français</option>
+            </select>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1 data-lang="about-title">About Flopsys AI</h1>
+            <p data-lang="about-subtitle">Leading AI Infrastructure Performance Analytics</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 项目介绍 -->
+            <section class="about-section">
+                <div class="section-title" data-lang="project-intro">项目介绍</div>
+                <div class="about-content">
+                    <p data-lang="project-desc">
+                        Flopsys AI 是一个专为AI基础设施设计的性能分析与成本优化平台。
+                        我们通过深度性能测试、TCO计算和智能ROI分析，帮助企业选择最优的
+                        AI训练与推理硬件配置方案。
+                    </p>
+                    <ul class="feature-list">
+                        <li data-lang="feature-1">实时性能监控与可视化分析</li>
+                        <li data-lang="feature-2">精准的总拥有成本(TCO)计算</li>
+                        <li data-lang="feature-3">多维度ROI排行榜对比</li>
+                        <li data-lang="feature-4">支持NVIDIA、AMD、华为等主流AI芯片</li>
+                        <li data-lang="feature-5">覆盖从36卡到576卡的扩展配置</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- 团队介绍 -->
+            <section class="about-section">
+                <div class="section-title" data-lang="team-intro">核心团队</div>
+                <div class="team-grid">
+                    <div class="team-member">
+                        <div class="member-avatar">👤</div>
+                        <h3 data-lang="member-1-name">Dr. Alex Chen</h3>
+                        <p class="member-role" data-lang="member-1-role">首席技术官</p>
+                        <p class="member-bio" data-lang="member-1-bio">
+                            10年AI基础设施优化经验，曾任Google TPU团队核心工程师
+                        </p>
+                    </div>
+                    <div class="team-member">
+                        <div class="member-avatar">👤</div>
+                        <h3 data-lang="member-2-name">Sarah Liu</h3>
+                        <p class="member-role" data-lang="member-2-role">产品负责人</p>
+                        <p class="member-bio" data-lang="member-2-bio">
+                            专注于AI性能分析工具的产品化，服务过50+企业客户
+                        </p>
+                    </div>
+                    <div class="team-member">
+                        <div class="member-avatar">👤</div>
+                        <h3 data-lang="member-3-name">Michael Zhang</h3>
+                        <p class="member-role" data-lang="member-3-role">首席架构师</p>
+                        <p class="member-bio" data-lang="member-3-bio">
+                            深度学习框架优化专家，开源社区核心贡献者
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 联系我们 -->
+            <section class="about-section">
+                <div class="section-title" data-lang="contact-us">联系我们</div>
+                <div class="contact-info">
+                    <div class="contact-item">
+                        <span class="contact-icon">📧</span>
+                        <span data-lang="email">contact@flopsys.ai</span>
+                    </div>
+                    <div class="contact-item">
+                        <span class="contact-icon">🌐</span>
+                        <span data-lang="website">www.flopsys.ai</span>
+                    </div>
+                    <div class="contact-item">
+                        <span class="contact-icon">📍</span>
+                        <span data-lang="address">San Francisco, CA</span>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script type="module" src="js/i18n.js"></script>
+    <script type="module">
+        import { updateLanguage } from './js/i18n.js';
+        
+        document.getElementById('lang-select').addEventListener('change', (e) => {
+            updateLanguage(e.target.value);
+        });
+        
+        // 初始化语言
+        updateLanguage('zh');
+    </script>
+</body>
+</html>
