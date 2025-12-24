@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>阶段分解分析 - 性能测试分析平台</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-left">
+            <div class="logo" data-lang="logo">Flopsys AI</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
+                <a href="profile.html" class="nav-link active" data-lang="profile">阶段分解</a>
+                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">排行榜</a>
+                <a href="about.html" class="nav-link" data-lang="about">About Us</a>
+            </div>
+        </div>
+        <div class="nav-right">
+            <select class="lang-select" id="lang-select">
+                <option value="zh">🇨🇳 中文</option>
+                <option value="en">🇺🇸 English</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="fr">🇫🇷 Français</option>
+            </select>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1 data-lang="profile-title">阶段分解分析</h1>
+            <p data-lang="profile-subtitle">选择 GPU、卡数、场景（prefill / decode），查看各阶段耗时堆积柱状图</p>
+        </div>
+
+        <div class="main-content">
+            <!-- 控制区域 -->
+            <section class="controls-section">
+                <div class="section-title" data-lang="profile-config">配置选择</div>
+                <div class="model-sequence-grid">
+                    <div class="control-group">
+                        <label for="gpu-select" data-lang="profile-gpu">GPU 型号</label>
+                        <select id="gpu-select">
+                            <option value="" data-lang="profile-select-gpu">请选择 GPU</option>
+                            <option value="DGX-B200">DGX-B200</option>
+                            <option value="H800">H800</option>
+                            <option value="H20">H20</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="gpu-num-select" data-lang="profile-gpu-num">GPU 数量</label>
+                        <select id="gpu-num-select">
+                            <option value="" data-lang="profile-all">全部</option>
+                            <option value="36">36</option>
+                            <option value="72">72</option>
+                            <option value="144">144</option>
+                            <option value="288">288</option>
+                            <option value="576">576</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="mode-select" data-lang="profile-mode">场景</label>
+                        <select id="mode-select">
+                            <option value="decode" data-lang="profile-decode">decode</option>
+                            <option value="prefill" data-lang="profile-prefill">prefill</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label>&nbsp;</label>
+                        <button class="btn btn-primary" id="load-btn" data-lang="profile-load">加载图表</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 图表区域 -->
+            <section class="chart-container">
+                <div class="watermark">Flopsys</div>
+                <div class="chart-wrapper">
+                    <canvas id="stageChart"></canvas>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script type="module" src="js/i18n.js"></script>
+    <script src="js/profile.js" type="module"></script>
+    <script type="module">
+        import { updateLanguage } from './js/i18n.js';
+
+        const select = document.getElementById('lang-select');
+        if (select) {
+            select.addEventListener('change', (e) => {
+                updateLanguage(e.target.value);
+            });
+        }
+        // 初始化语言为英文
+        updateLanguage('en');
+    </script>
+</body>
+</html>

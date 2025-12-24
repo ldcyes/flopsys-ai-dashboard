@@ -40,7 +40,7 @@ body {
     border-radius: 12px;
     margin: 15px auto;
     width: calc(100% - 30px);
-    max-width: 1400px;
+    max-width: 1800px;
     backdrop-filter: blur(12px);
     box-shadow: var(--shadow);
     z-index: 100;
@@ -109,9 +109,8 @@ body {
 
 /* 主容器 */
 .container {
-    max-width: 1400px;
+    max-width: 1800px;
     margin: 0 auto;
-    padding: 0 var(--spacing-unit);
 }
 
 /* 头部 */

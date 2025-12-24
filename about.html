@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,6 +13,7 @@
             <div class="nav-links">
                 <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
                 <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
+                <a href="profile.html" class="nav-link" data-lang="profile">阶段分解</a>
                 <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">排行榜</a>
                 <a href="about.html" class="nav-link active" data-lang="about">About Us</a>
             </div>
@@ -20,7 +21,7 @@
         <div class="nav-right">
             <select class="lang-select" id="lang-select">
                 <option value="zh">🇨🇳 中文</option>
-                <option value="en">🇺🇸 English</option>
+                <option value="en" selected>🇺🇸 English</option>
                 <option value="es">🇪🇸 Español</option>
                 <option value="fr">🇫🇷 Français</option>
             </select>
@@ -113,8 +114,8 @@
             updateLanguage(e.target.value);
         });
         
-        // 初始化语言
-        updateLanguage('zh');
+        // 初始化语言为英文
+        updateLanguage('en');
     </script>
 </body>
 </html>

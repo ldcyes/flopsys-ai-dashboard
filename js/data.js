@@ -1,57 +1,22 @@
 // 硬件配置数据
 export const hardwareBrands = {
-    huawei: ['910B', '910C','950PR','960','970'],
-    nvidia: ['L4', 'H20', 'H800', 'HGX-H100', 'HGX-H200', 'DGX-B100', 'DGX-B200', 'DGX-B300', 'GB200-NVL72', 'GB300-NV72', 'Rubin-NV144', 'Rubin-NV576'],
-    amd: ['MI300X', 'MI350X', 'MI355', 'MI400']
+    //huawei: ['910B', '910C','950PR','960','970'],
+    nvidia: ['H20', 'H800', 'HGX-H100', 'HGX-H200', 'DGX-B100', 'DGX-B200', 'DGX-B300', 'GB200-NVL72', 'GB300-NV72', 'Rubin-NV144', 'Rubin-NV576'],
+    //amd: ['MI300X', 'MI350X', 'MI355', 'MI400']
 };
 
-export const allHardware = ['910B', '910C','950PR','960','970', 'L4','H20','H800',
-    'HGX-H200', 'DGX-B200', 'DGX-B300', 'GB200-NVL72', 'GB300-NV72', 'Rubin-NV144', 'Rubin-NV576', 'HGX-H200', 'H800', 'H200', 'R200', 'R300', 'MI400', 'MI355'];
+export const allHardware = [//'910B', '910C','950PR','960','970',
+    'H20', 'H800', 'HGX-H100','HGX-H200', 'DGX-B200', 'DGX-B300', 'GB200-NVL72', 'GB300-NV72', 'Rubin-NV144', 'Rubin-NV576']; //'MI400', 'MI355'];
 
 export const tpOptions = [
     { id: 'attn-tp', values: ['1TP', '2TP', '4TP', '8TP'] },
     { id: 'ffn-tp', values: ['1TP', '2TP', '4TP', '8TP'] }
 ];
 
-export const ppOptions = ['1PP', '2PP', '4PP', '8PP', '16PP'];
+export const ppOptions = ['1PP', '2PP', '4PP', '8PP'];
 
-// 生成模拟数据
-export function generateMockData(config) {
-    const data = [];
-    const points = 20;
-    
-    for (let i = 0; i < points; i++) {
-        const totalTPS = 1000 + i * 500 + Math.random() * 300;
-        const TPSPerQuery = totalTPS / (10 + Math.random() * 20) * (0.8 + Math.random() * 0.4);
-        
-        data.push({
-            x: totalTPS,
-            y: TPSPerQuery
-        });
-    }
-    
-    if (config.model) {
-        const modelMultiplier = {
-            'K2-thinking': 1.2,
-            'DeepSeekR1': 1.0,
-            'LLAMA4-behemoh': 0.8,
-            'GPT-oss120b': 1.1
-        };
-        data.forEach(point => {
-            point.y *= modelMultiplier[config.model] || 1;
-        });
-    }
-    
-    if (config.cardCount) {
-        const cardMultiplier = parseInt(config.cardCount) / 72;
-        data.forEach(point => {
-            point.x *= cardMultiplier;
-            point.y *= Math.sqrt(cardMultiplier);
-        });
-    }
-    
-    return data.sort((a, b) => a.x - b.x);
-}
+// Batch size 选项
+export const batchOptions = [16, 32, 64, 128, 256, 384, 512];
 
 // 获取品牌图标类名
 export function getBrandIcon(hw) {
@@ -81,7 +46,8 @@ export async function loadExcelData(filePath) {
 
     // 转换为 JSON 数组，每一行是一个对象，key 为列名
     const json = XLSX.utils.sheet_to_json(worksheet, { defval: null });
-
+    console.log('[loadExcelData] rows count =', json.length);
+    console.log('[loadExcelData] first row =', json[0]);
     // 尝试把数字字符串转成 Number，其他保持原样
     return json.map(row => {
         const obj = {};

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,7 +12,8 @@
             <div class="logo" data-lang="logo">Flopsys AI</div>
             <div class="nav-links">
                 <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
-                <a href="tco.html" class="nav-link active" data-lang="tco">TCO计算器</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
+                <a href="profile.html" class="nav-link" data-lang="profile">阶段分解</a>
                 <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">排行榜</a>
                 <a href="about.html" class="nav-link" data-lang="about">About Us</a>
             </div>
@@ -20,7 +21,7 @@
         <div class="nav-right">
             <select class="lang-select" id="lang-select">
                 <option value="zh">🇨🇳 中文</option>
-                <option value="en">🇺🇸 English</option>
+                <option value="en" selected>🇺🇸 English</option>
                 <option value="es">🇪🇸 Español</option>
                 <option value="fr">🇫🇷 Français</option>
             </select>
@@ -39,36 +40,41 @@
                 <div class="section-title" data-lang="config-input">配置输入</div>
                 <div class="tco-input-grid">
                     <div class="control-group">
-                        <label for="tco-model-select" data-lang="model">模型选择</label>
-                        <select id="tco-model-select">
-                            <option value="" data-lang="select-model">请选择模型</option>
-                            <option value="K2-thinking">K2-thinking</option>
-                            <option value="DeepSeekR1">DeepSeekR1</option>
-                            <option value="LLAMA4-behemoh">LLAMA4-behemoh</option>
-                            <option value="GPT-oss120b">GPT-oss120b</option>
+                        <label for="tco-gpu-select" data-lang="tco-gpu">GPU 型号</label>
+                        <select id="tco-gpu-select">
+                            <option value="" data-lang="tco-select-gpu">请选择 GPU</option>
+                            <option value="HGX-H200">HGX-H200</option>
+                            <option value="DGX-B200">DGX-B200</option>
+                            <option value="DGX-B300">DGX-B300</option>
+                            <option value="GB200-NVL72">GB200-NVL72</option>
+                            <option value="GB300-NVL72">GB300-NVL72</option>
+                            <option value="Rubin-NV144">Rubin-NV144</option>
+                            <option value="Rubin-NV576">Rubin-NV576</option>
+                             <option value="H800">H800</option>
                         </select>
                     </div>
-                    
+
+                    <div class="control-group">
+                        <label for="tco-input-seq" data-lang="tco-input-seq">Input 序列长度</label>
+                        <select id="tco-input-seq">
+                            <option value="" data-lang="tco-select-input">请选择 Input 序列</option>
+                            <option value="1K">1K</option>
+                            <option value="8K">8K</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="tco-output-seq" data-lang="tco-output-seq">Output 序列长度</label>
+                        <select id="tco-output-seq">
+                            <option value="" data-lang="tco-select-output">请选择 Output 序列</option>
+                            <option value="1K">1K</option>
+                            <option value="8K">8K</option>
+                        </select>
+                    </div>
+
                     <div class="control-group">
                         <label for="card-price-input" data-lang="card-price">单卡小时价格 ($)</label>
                         <input type="number" id="card-price-input" placeholder="0.00" step="0.01">
-                    </div>
-                    
-                    <div class="control-group">
-                        <label for="card-quantity-select" data-lang="card-quantity">卡数量</label>
-                        <select id="card-quantity-select">
-                            <option value="" data-lang="select-quantity">请选择数量</option>
-                            <option value="36">36</option>
-                            <option value="72">72</option>
-                            <option value="144">144</option>
-                            <option value="288">288</option>
-                            <option value="576">576</option>
-                        </select>
-                    </div>
-                    
-                    <div class="control-group">
-                        <label for="usage-hours-input" data-lang="usage-hours">每日使用小时</label>
-                        <input type="number" id="usage-hours-input" value="24" min="1" max="24">
                     </div>
                 </div>
                 
@@ -92,5 +98,17 @@
     <script type="module" src="js/i18n.js"></script>
     <script type="module" src="js/data.js"></script>
     <script type="module" src="js/tco.js"></script>
+    <script type="module">
+        import { updateLanguage } from './js/i18n.js';
+
+        const select = document.getElementById('lang-select');
+        if (select) {
+            select.addEventListener('change', (e) => {
+                updateLanguage(e.target.value);
+            });
+        }
+        // 初始化语言为英文
+        updateLanguage('en');
+    </script>
 </body>
 </html>

@@ -33,7 +33,7 @@ export function initChart() {
                         label: function(context) {
                             const x = context.parsed.x;
                             const y = context.parsed.y;
-                            return `${context.dataset.label}: TPS per User = ${y.toFixed(2)}, TPS per GPU = ${x.toFixed(2)}`;
+                            return `${context.dataset.label}: TPS per user = ${y.toFixed(2)}, TPS per gpu = ${x.toFixed(2)}`;
                         }
                     }
                 }
@@ -163,12 +163,12 @@ export function updateChart(config) {
 export async function loadAndRenderChartFromCSV(filePath, label) {
     const csvData = await loadExcelData(filePath);
 
-    // 默认从 CSV 中提取 TPS per GPU / TPS per User 列
+    // 从 Excel 中提取 TPS per gpu / TPS per user 列（注意大小写）
     const chartDataPoints = csvData
-        .filter(row => row['TPS per GPU'] != null && row['TPS per User'] != null)
+        .filter(row => row['TPS per gpu'] != null && row['TPS per user'] != null)
         .map(row => ({
-            x: Number(row['TPS per GPU']),
-            y: Number(row['TPS per User'])
+            x: Number(row['TPS per gpu']),
+            y: Number(row['TPS per user'])
         }));
 
     const datasetIndex = chartData.datasets.length;
@@ -177,8 +177,8 @@ export async function loadAndRenderChartFromCSV(filePath, label) {
         data: chartDataPoints,
         borderColor: getColor(datasetIndex),
         backgroundColor: getColor(datasetIndex) + '20',
-    fill: false,
-    showLine: false,
+        fill: false,
+        showLine: false,
         pointBackgroundColor: getColor(datasetIndex),
         pointBorderColor: '#fff',
         pointHoverBackgroundColor: '#fff',
@@ -225,10 +225,10 @@ export async function plotCsvWithFilters(filePath, filters, categoryKey) {
 
     for (const [catVal, rows] of groups.entries()) {
         const points = rows
-            .filter(row => row['TPS per GPU'] != null && row['TPS per User'] != null)
+            .filter(row => row['TPS per gpu'] != null && row['TPS per user'] != null)
             .map(row => ({
-                x: Number(row['TPS per GPU']),
-                y: Number(row['TPS per User'])
+                x: Number(row['TPS per gpu']),
+                y: Number(row['TPS per user'])
             }));
 
         if (points.length === 0) continue;

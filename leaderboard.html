@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,6 +13,7 @@
             <div class="nav-links">
                 <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
                 <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
+                <a href="profile.html" class="nav-link" data-lang="profile">阶段分解</a>
                 <a href="leaderboard.html" class="nav-link active" data-lang="leaderboard">排行榜</a>
                 <a href="about.html" class="nav-link" data-lang="about">About Us</a>
             </div>
@@ -20,7 +21,7 @@
         <div class="nav-right">
             <select class="lang-select" id="lang-select">
                 <option value="zh">🇨🇳 中文</option>
-                <option value="en">🇺🇸 English</option>
+                <option value="en" selected>🇺🇸 English</option>
                 <option value="es">🇪🇸 Español</option>
                 <option value="fr">🇫🇷 Français</option>
             </select>
@@ -39,12 +40,18 @@
                 <div class="section-title" data-lang="filter-config">筛选配置</div>
                 <div class="leaderboard-filter-grid">
                     <div class="control-group">
+                        <label for="leaderboard-mode-select" data-lang="leaderboard-mode">场景</label>
+                        <select id="leaderboard-mode-select">
+                            <option value="prefill" data-lang="leaderboard-prefill">Prefill</option>
+                            <option value="decode" data-lang="leaderboard-decode">Decode</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
                         <label for="leaderboard-model-select" data-lang="model">模型选择</label>
                         <select id="leaderboard-model-select">
                             <option value="" data-lang="select-model">请选择模型</option>
                             <option value="K2-thinking">K2-thinking</option>
                             <option value="DeepSeekR1">DeepSeekR1</option>
-                            <option value="LLAMA4-behemoh">LLAMA4-behemoh</option>
                             <option value="GPT-oss120b">GPT-oss120b</option>
                         </select>
                     </div>
@@ -101,5 +108,17 @@
     <script type="module" src="js/i18n.js"></script>
     <script type="module" src="js/data.js"></script>
     <script type="module" src="js/leaderboard.js"></script>
+    <script type="module">
+        import { updateLanguage } from './js/i18n.js';
+
+        const select = document.getElementById('lang-select');
+        if (select) {
+            select.addEventListener('change', (e) => {
+                updateLanguage(e.target.value);
+            });
+        }
+        // 初始化语言为英文
+        updateLanguage('en');
+    </script>
 </body>
 </html>
