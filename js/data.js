@@ -1,12 +1,12 @@
 // 硬件配置数据
 export const hardwareBrands = {
-    //huawei: ['910B', '910C','950PR','960','970'],
+    huawei: [],//'910B', '910C','950PR','960','970'],
     nvidia: ['H20', 'H800', 'HGX-H100', 'HGX-H200', 'DGX-B100', 'DGX-B200', 'DGX-B300', 'GB200-NVL72', 'GB300-NV72', 'Rubin-NV144', 'Rubin-NV576'],
-    //amd: ['MI300X', 'MI350X', 'MI355', 'MI400']
+    amd: []//'MI300X', 'MI350X', 'MI355', 'MI400']
 };
 
 export const allHardware = [//'910B', '910C','950PR','960','970',
-    'H20', 'H800', 'HGX-H100','HGX-H200', 'DGX-B200', 'DGX-B300', 'GB200-NVL72', 'GB300-NV72', 'Rubin-NV144', 'Rubin-NV576']; //'MI400', 'MI355'];
+    'H20', 'H800', 'HGX-H100','HGX-H200', 'DGX-B100','DGX-B200', 'DGX-B300', 'GB200-NVL72', 'GB300-NV72', 'Rubin-NV144', 'Rubin-NV576']; //'MI400', 'MI355'];
 
 export const tpOptions = [
     { id: 'attn-tp', values: ['1TP', '2TP', '4TP', '8TP'] },

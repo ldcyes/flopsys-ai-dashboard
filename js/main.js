@@ -1,8 +1,9 @@
 import { translations, changeLanguage, updateLanguage, currentLang } from './i18n.js';
-import { allHardware, hardwareBrands, tpOptions, ppOptions, batchOptions, generateMockData } from './data.js';
+import { allHardware, hardwareBrands, tpOptions, ppOptions, batchOptions} from './data.js';
 import { initChart, updateChart, updateLegend, chart, chartData, loadAndRenderChartFromCSV, plotCsvWithFilters } from './chart.js';
 const initialConfig = {
     model: 'DeepSeekR1', // 默认模型
+    precision: 'FP8', // 默认精度
     cardCount: '72', // 默认卡数量
     mode: 'prefill', // 默认场景
     seq: '8K', // 默认序列长度

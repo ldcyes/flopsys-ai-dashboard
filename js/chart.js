@@ -1,4 +1,4 @@
-import { generateMockData, loadExcelData } from './data.js';
+import { loadExcelData } from './data.js';
 
 export let chart = null;
 export let chartData = { datasets: [] };
