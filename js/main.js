@@ -176,6 +176,7 @@ function getSelectedValues(prefix) {
 function getCurrentConfig() {
     return {
         model: document.getElementById('model-select').value,
+        precision:'FP8', // 默认精度
         cardCount: document.getElementById('card-count-select').value,
         mode: document.getElementById('mode-select').value,
         seq: document.getElementById('seq-select').value,
@@ -240,6 +241,7 @@ function handleConfigChange() {
         const filters = {
             model: config.model || null,
             GPU: config.hardware,
+            'precision': config.precision || null,
             'Gpu num': config.cardCount || null,
             // 这里假定：pp 列中存的是纯数字，如 4, 8，对应复选框值
             'pp': config.pp,
