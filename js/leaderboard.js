@@ -16,25 +16,17 @@ function bindEvents() {
 function generateRanking() {
     const mode = document.getElementById('leaderboard-mode-select').value || 'prefill';
     const model = document.getElementById('leaderboard-model-select').value;
-    const priceHuawei = parseFloat(document.getElementById('price-input-huawei').value) || 2.5;
-    const priceNvidia = parseFloat(document.getElementById('price-input-nvidia').value) || 3.0;
-    const priceAmd = parseFloat(document.getElementById('price-input-amd').value) || 2.0;
+
     
     if (!model) {
         const msg = translations[currentLang]?.['leaderboard-model-missing'] || '请选择模型';
         alert(msg);
         return;
     }
-
-    const cardPrices = {
-        huawei: priceHuawei,
-        nvidia: priceNvidia,
-        amd: priceAmd
-    };
     
     const filePath = mode === 'prefill' ? 'data/final_prefill_all.xlsx' : 'data/final_decode_all.xlsx';
 
-    generateRankingFromExcel(filePath, cardPrices)
+    generateRankingFromExcel(filePath, model)
         .then(rankings => {
             if (!rankings.length) {
                 const msg = translations[currentLang]?.['leaderboard-no-data'] || '未找到满足条件的数据';
@@ -50,36 +42,65 @@ function generateRanking() {
         });
 }
 
-async function generateRankingFromExcel(filePath, cardPrices) {
+async function generateRankingFromExcel(filePath, model) {
     const rows = await loadExcelData(filePath);
-    const rankings = [];
+
+    // 先按 GPU 聚合，找到每个 GPU TPS per gpu 最大的配置
+    const bestByGpu = new Map();
 
     rows.forEach(row => {
         const gpu = row['GPU'];
-        const tpsPerGpu = row['TPS per gpu'];
-        const tpsPerUser = row['TPS per user'];
+        const rowModel = row['model'] || row['Model'];
+        const tpsPerGpuRaw = row['TPS per gpu'];
+        const tpsPerUserRaw = row['TPS per user'];
 
-        if (!gpu || tpsPerGpu == null) return;
-        if (tpsPerUser != null && Number(tpsPerUser) <= 20) return;
+        if (!gpu || tpsPerGpuRaw == null) return;
 
-        const brand = hardwareBrands.huawei.includes(gpu) ? 'huawei' :
-                     hardwareBrands.nvidia.includes(gpu) ? 'nvidia' : 'amd';
-        const price = cardPrices[brand] || 2.5;
+        // 模型过滤
+        if (model && rowModel && String(rowModel).trim() !== String(model).trim()) return;
 
-        // 一小时每张卡吐出来的 token / price
-        const tokensPerHourPerGpu = Number(tpsPerGpu) * 3600;
-        const roi = tokensPerHourPerGpu / price;
+        const tpsPerGpu = Number(tpsPerGpuRaw);
+        const tpsPerUser = tpsPerUserRaw != null ? Number(tpsPerUserRaw) : null;
+
+        // 只保留 TPS per user >= 20 的配置
+        if (tpsPerUser != null && tpsPerUser < 20) return;
+
+        const existing = bestByGpu.get(gpu);
+        if (!existing || tpsPerGpu > existing.tpsPerGpu) {
+            bestByGpu.set(gpu, {
+                row,
+                tpsPerGpu
+            });
+        }
+    });
+
+    const rankings = [];
+
+    bestByGpu.forEach(({ row, tpsPerGpu }) => {
+        const gpu = row['GPU'];
+
+        // 从行里取出 dp/ep/tp/batch（这里以 FFN 为例，你可以换成 attn_*）
+    const attnDp = row['attn dp'] ?? row['Attn dp'] ?? row['attn_dp'];
+    const attnTp = row['attn tp'] ?? row['Attn tp'] ?? row['attn_tp'];
+        const ffnEp = row['ffn ep'] ?? row['FFN ep'] ?? row['ffn_ep'];
+        const ffnTp = row['ffn tp'] ?? row['FFN tp'] ?? row['ffn_tp'];
+        const batch = row['Batch'] ?? row['batch'];
 
         rankings.push({
             hardware: gpu,
             quantity: row['Gpu num'] || '-',
-            config: row['Config_Name'] || '',
-            tpsPerGpu: Number(tpsPerGpu),
-            roi: roi
+            tpsPerGpu,
+            attnDp,
+            attnTp,
+            ffnEp,
+            ffnTp,
+            batch
         });
     });
 
-    rankings.sort((a, b) => b.roi - a.roi);
+    // 按 TPS/gpu 从大到小排序
+    rankings.sort((a, b) => b.tpsPerGpu - a.tpsPerGpu);
+
     return rankings;
 }
 
@@ -91,17 +112,23 @@ function displayRankings(rankings) {
         const row = document.createElement('tr');
         const brandIcon = hardwareBrands.huawei.includes(item.hardware) ? '🇨🇳' : 
                          hardwareBrands.nvidia.includes(item.hardware) ? '🇺🇸' : '🇺🇸';
-        
+
+        const configParamsText = [
+            item.attnDp!= null ? `attn dp: ${item.attnDp}` : null,
+            item.attnTp!= null ? `attn tp: ${item.attnTp}` : null,
+            item.ffnEp != null ? `ffn ep: ${item.ffnEp}` : null,
+            item.ffnTp != null ? `ffn tp: ${item.ffnTp}` : null,
+            item.batch != null ? `batch: ${item.batch}` : null
+        ].filter(Boolean).join(' | ');
+
         row.innerHTML = `
             <td class="rank-cell">${index + 1}</td>
             <td>${brandIcon} ${item.hardware}</td>
             <td>${item.quantity}</td>
-            <td class="config-cell">${item.config}</td>
+            <td class="config-cell">${configParamsText}</td>
             <td class="metric-cell">${item.tpsPerGpu.toFixed(2)}</td>
-            <td class="metric-cell">${item.roi.toFixed(2)}</td>
         `;
         
-        // 前三名高亮
         if (index < 3) {
             row.classList.add('top-rank');
         }

@@ -11,10 +11,10 @@
         <div class="nav-left">
             <div class="logo" data-lang="logo">Flopsys AI</div>
             <div class="nav-links">
-                <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
-                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
-                <a href="profile.html" class="nav-link" data-lang="profile">阶段分解</a>
-                <a href="leaderboard.html" class="nav-link active" data-lang="leaderboard">排行榜</a>
+                <a href="index.html" class="nav-link" data-lang="performance">performance</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO calculator</a>
+                <a href="profile.html" class="nav-link" data-lang="profile">profile</a>
+                <a href="leaderboard.html" class="nav-link active" data-lang="leaderboard">leaderboard</a>
                 <a href="about.html" class="nav-link" data-lang="about">About Us</a>
             </div>
         </div>
@@ -30,72 +30,56 @@
 
     <div class="container">
         <div class="header">
-            <h1 data-lang="leaderboard-title">性能排行榜</h1>
-            <p data-lang="leaderboard-subtitle">比较不同硬件配置的ROI表现</p>
+            <h1 data-lang="leaderboard-title">performance leaderboard</h1>
+            <p data-lang="leaderboard-subtitle">Compare TPS performance across different hardware configurations</p>
         </div>
 
         <div class="main-content">
-            <!-- 筛选配置 -->
+            <!-- Filter Configuration -->
             <section class="controls-section">
-                <div class="section-title" data-lang="filter-config">筛选配置</div>
+                <div class="section-title" data-lang="filter-config">Filter Configuration</div>
                 <div class="leaderboard-filter-grid">
                     <div class="control-group">
-                        <label for="leaderboard-mode-select" data-lang="leaderboard-mode">场景</label>
+                        <label for="leaderboard-mode-select" data-lang="leaderboard-mode">Scenario</label>
                         <select id="leaderboard-mode-select">
-                            <option value="prefill" data-lang="leaderboard-prefill">Prefill</option>
+                            <option value="prefill" data-lang="leaderboard-prefill" selected>Prefill</option>
                             <option value="decode" data-lang="leaderboard-decode">Decode</option>
                         </select>
                     </div>
                     <div class="control-group">
-                        <label for="leaderboard-model-select" data-lang="model">模型选择</label>
+                        <label for="leaderboard-model-select" data-lang="model">Model Selection</label>
                         <select id="leaderboard-model-select">
-                            <option value="" data-lang="select-model">请选择模型</option>
-                            <option value="K2-thinking">K2-thinking</option>
-                            <option value="DeepSeekR1">DeepSeekR1</option>
-                            <option value="GPT-oss120b">GPT-oss120b</option>
+                            <option value="Deep-Seekerv3" selected>DeepSeekR1</option>
                         </select>
                     </div>
                     
-                    <div class="control-group">
-                        <label for="price-input-huawei" data-lang="price-huawei">华为卡价格 ($/h)</label>
-                        <input type="number" id="price-input-huawei" placeholder="2.50" step="0.01">
-                    </div>
                     
-                    <div class="control-group">
-                        <label for="price-input-nvidia" data-lang="price-nvidia">NVIDIA卡价格 ($/h)</label>
-                        <input type="number" id="price-input-nvidia" placeholder="3.00" step="0.01">
-                    </div>
-                    
-                    <div class="control-group">
-                        <label for="price-input-amd" data-lang="price-amd">AMD卡价格 ($/h)</label>
-                        <input type="number" id="price-input-amd" placeholder="2.00" step="0.01">
-                    </div>
                 </div>
                 
                 <div class="button-group">
-                    <button class="btn btn-primary" id="generate-ranking-btn" data-lang="generate-ranking">生成排行榜</button>
+                    <button class="btn btn-primary" id="generate-ranking-btn" data-lang="generate-ranking">Generate Leaderboard</button>
                 </div>
             </section>
 
-            <!-- 排行榜表格 -->
+            <!-- Leaderboard Table -->
             <section class="leaderboard-section">
-                <div class="section-title" data-lang="ranking-results">排行榜结果</div>
+                <div class="section-title" data-lang="ranking-results">Ranking Results</div>
                 <div class="leaderboard-table-wrapper">
                     <table class="leaderboard-table" id="leaderboard-table">
                         <thead>
                             <tr>
-                                <th data-lang="rank">排名</th>
-                                <th data-lang="hardware">硬件配置</th>
-                                <th data-lang="card-count">卡数量</th>
-                                <th data-lang="optimal-config">最优配置</th>
-                                <th data-lang="tps-per-dollar">TPS/$</th>
-                                <th data-lang="roi">ROI</th>
+                                <th data-lang="rank">Rank</th>
+                                <th data-lang="hardware">Hardware Configuration</th>
+                                <th data-lang="card-count">Card Count</th>
+                                <th data-lang="optimal-config">Optimal Configuration</th>
+                                <th data-lang="config-params">Configuration (dp/ep/tp/batch)</th>
+                                <th data-lang="tps-per-gpu">TPS per GPU</th>
                             </tr>
                         </thead>
                         <tbody id="leaderboard-tbody">
                             <tr>
                                 <td colspan="6" class="empty-state" data-lang="no-ranking">
-                                    请点击"生成排行榜"查看结果
+                                    Please click "Generate Leaderboard" to view results
                                 </td>
                             </tr>
                         </tbody>
@@ -108,17 +92,22 @@
     <script type="module" src="js/i18n.js"></script>
     <script type="module" src="js/data.js"></script>
     <script type="module" src="js/leaderboard.js"></script>
+        <!-- SheetJS for parsing xlsx files (provides global XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script type="module">
-        import { updateLanguage } from './js/i18n.js';
+        import { updateLanguage, currentLang } from './js/i18n.js';
 
         const select = document.getElementById('lang-select');
         if (select) {
+            // 页面加载时，下拉框展示当前语言
+            select.value = currentLang || 'en';
+
             select.addEventListener('change', (e) => {
                 updateLanguage(e.target.value);
             });
         }
-        // 初始化语言为英文
-        updateLanguage('en');
+        // 使用当前语言初始化整页文案
+        updateLanguage();
     </script>
 </body>
 </html>

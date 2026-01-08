@@ -31,8 +31,6 @@ function getXlsxPath() {
   const mode = document.getElementById('mode-select').value; // 'decode' or 'prefill'
   if (mode === 'decode') {
     return 'data/final_decode_all.xlsx';
-
-    
   } else if (mode === 'prefill') {
     return 'data/final_prefill_all.xlsx';
   }
@@ -53,12 +51,16 @@ async function loadXlsxData(filePath) {
   return json;
 }
 
-// 根据选择过滤行：GPU 型号 + GPU 数量（可选）
+// 根据选择过滤行：模型（可选）+ GPU 型号 + GPU 数量（可选）
 function filterRows(rows) {
+  const model = document.getElementById('profile-model-select')?.value; // 列名 model
   const gpu = document.getElementById('gpu-select').value; // 列名 GPU
   const gpuNum = document.getElementById('gpu-num-select').value; // 列名 Gpu num
 
   return rows.filter(row => {
+    if (model && String(row['model']).trim() !== String(model).trim()) {
+      return false;
+    }
     if (gpu && String(row['GPU']).trim() !== String(gpu).trim()) {
       return false;
     }
@@ -77,9 +79,9 @@ function buildChartData(rows) {
       return row['Config_Name'];
     }
     const pp = row['pp'];
-    const ep = row['attn ep'] ?? row['ffn ep'];
-    const dp = row['attn dp'] ?? row['ffn dp'];
-    const tp = row['attn tp'] ?? row['ffn tp'];
+    const ep = row['ffn ep'];
+    const dp = row['attn dp'];
+    const tp = row['attn tp'];
     return `pp${pp}-ep${ep}-dp${dp}-tp${tp}`;
   });
 
@@ -138,7 +140,7 @@ function renderStageChart(chartData) {
           ticks: { color: '#a0a0c0', maxRotation: 60, minRotation: 30 },
           title: {
             display: true,
-            text: '配置 (Config_Name 或 pp-ep-dp-tp)',
+            text: '',
             color: '#a0a0c0'
           },
           grid: { color: 'rgba(160, 160, 192, 0.1)' }
@@ -148,7 +150,7 @@ function renderStageChart(chartData) {
           ticks: { color: '#a0a0c0' },
           title: {
             display: true,
-            text: '时间 (ms)',
+            text: 'time (ms)',
             color: '#a0a0c0'
           },
           grid: { color: 'rgba(160, 160, 192, 0.1)' }
@@ -169,7 +171,7 @@ async function handleLoadClick() {
     const allRows = await loadXlsxData(path);
     const rows = filterRows(allRows);
     if (!rows.length) {
-      alert('根据当前筛选条件没有找到任何配置，请调整 GPU / 卡数。');
+      alert('there is no data, please adjust GPU / card count.');
       if (stageChart) {
         stageChart.destroy();
         stageChart = null;
@@ -181,7 +183,7 @@ async function handleLoadClick() {
     renderStageChart(chartData);
   } catch (err) {
     console.error(err);
-    alert('加载或解析 Excel 失败，请检查 decode_all.xlsx / prefill_all.xlsx 是否存在且表头一致。');
+    alert('Failed to load or parse Excel. Please check if decode_all.xlsx / prefill_all.xlsx exist and have consistent headers.');
   }
 }
 

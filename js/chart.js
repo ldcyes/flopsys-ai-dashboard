@@ -161,6 +161,7 @@ export function updateChart(config) {
 }
 
 export async function loadAndRenderChartFromCSV(filePath, label) {
+    console.log('[loadAndRenderChartFromCSV] Loading data from:', filePath);
     const csvData = await loadExcelData(filePath);
 
     // 从 Excel 中提取 TPS per gpu / TPS per user 列（注意大小写）
@@ -190,9 +191,12 @@ export async function loadAndRenderChartFromCSV(filePath, label) {
 
 // 从 CSV 绘制：根据过滤条件选行，并按某一列进行分类着色
 export async function plotCsvWithFilters(filePath, filters, categoryKey) {
+    console.log('[plotCsvWithFilters] Loading data from:', filePath);
     const csvData = await loadExcelData(filePath);
 
-    // 1) 按 filters 过滤行（例如 pp、attn tp、ffn tp、attn dp、ffn dp 等）
+    console.log('[plotCsvWithFilters] total rows in CSV:', csvData.length);
+    // 1) 按 filters 过滤行（例如 pp、attn tp、ffn ep、attn dp、ffn dp 等）
+    console.log('[plotCsvWithFilters] filters:', filters);
     const filteredRows = csvData.filter(row => {
         return Object.entries(filters).every(([key, value]) => {
             if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -208,6 +212,7 @@ export async function plotCsvWithFilters(filePath, filters, categoryKey) {
         });
     });
 
+    console.log('[plotCsvWithFilters] filtered rows:', filteredRows.length);
     // 2) 按 categoryKey 分组（确保一次只有一个分类维度）
     const groups = new Map();
     filteredRows.forEach(row => {
@@ -254,7 +259,7 @@ export async function plotCsvWithFilters(filePath, filters, categoryKey) {
 export function updateLegend() {
     const legendContainer = document.getElementById('legend-container');
     legendContainer.innerHTML = '';
-    
+
     if (chartData.datasets.length === 0) {
         const noDataText = document.querySelector('#lang-select').value === 'zh' ? 
             '暂无数据 - 请选择配置' : 'No data - Please select configuration';

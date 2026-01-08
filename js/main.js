@@ -1,4 +1,4 @@
-import { translations, changeLanguage, updateLanguage, currentLang } from './i18n.js';
+import { translations, updateLanguage, currentLang } from './i18n.js';
 import { allHardware, hardwareBrands, tpOptions, ppOptions, batchOptions} from './data.js';
 import { initChart, updateChart, updateLegend, chart, chartData, loadAndRenderChartFromCSV, plotCsvWithFilters } from './chart.js';
 const initialConfig = {
@@ -16,7 +16,7 @@ const initialConfig = {
 document.addEventListener('DOMContentLoaded', async function() {
     generateHardwareCheckboxes();
     generateTPCheckboxes();
-    generatePPCheckboxes();
+    //generatePPCheckboxes();
     generateBatchCheckboxes();
 
     // 默认选中下拉框的第一个有效选项
@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     setFirstCheckboxChecked('#hardware-checkboxes');
     setFirstCheckboxChecked('#attn-tp-group');
     setFirstCheckboxChecked('#ffn-tp-group');
-    setFirstCheckboxChecked('#pp-group');
+    //setFirstCheckboxChecked('#pp-group');
     selectAllCheckboxes('#batch-group');
 
     initChart();
@@ -176,7 +176,7 @@ function getSelectedValues(prefix) {
 function getCurrentConfig() {
     return {
         model: document.getElementById('model-select').value,
-        precision:'FP8', // 默认精度
+        precision:'fp4', // 默认精度
         cardCount: document.getElementById('card-count-select').value,
         mode: document.getElementById('mode-select').value,
         seq: document.getElementById('seq-select').value,
@@ -205,7 +205,7 @@ function bindEventListeners() {
     document.getElementById('hardware-checkboxes').addEventListener('change', handleConfigChange);
     document.getElementById('attn-tp-group').addEventListener('change', handleConfigChange);
     document.getElementById('ffn-tp-group').addEventListener('change', handleConfigChange);
-    document.getElementById('pp-group').addEventListener('change', handleConfigChange);
+    //document.getElementById('pp-group').addEventListener('change', handleConfigChange);
     const batchGroup = document.getElementById('batch-group');
     if (batchGroup) {
         batchGroup.addEventListener('change', handleConfigChange);
@@ -226,7 +226,7 @@ function bindEventListeners() {
 function handleConfigChange() {
     const config = getCurrentConfig();
     const hasBaseConfig = config.model && config.cardCount && config.mode && config.seq;
-    const hasHardwareConfig = config.hardware.length > 0 && config.attnTP.length > 0 && config.ffnTP.length > 0 && config.pp.length > 0 && config.batch.length > 0;
+    const hasHardwareConfig = config.hardware.length > 0 && config.attnTP.length > 0 && config.ffnTP.length > 0 && config.batch.length > 0;
 
     // 仅在选择了完整的硬件配置后才从 Excel 绘制
     if (hasBaseConfig && hasHardwareConfig) {
@@ -241,10 +241,10 @@ function handleConfigChange() {
         const filters = {
             model: config.model || null,
             GPU: config.hardware,
-            'precision': config.precision || null,
+            'precision_all': config.precision || null,
             'Gpu num': config.cardCount || null,
             // 这里假定：pp 列中存的是纯数字，如 4, 8，对应复选框值
-            'pp': config.pp,
+            //'pp': config.pp,
             'attn tp': config.attnTP,
             'ffn tp': config.ffnTP,
             'Batch': config.batch,
@@ -284,8 +284,8 @@ function resetHardwareConfig() {
     
     document.getElementById('model-select').value = '';
     document.getElementById('card-count-select').value = '';
-    document.getElementById('input-seq-select').value = '';
-    document.getElementById('output-seq-select').value = '';
+    document.getElementById('mode-select').value = '';
+    document.getElementById('seq-select').value = '';
     
     handleConfigChange();
 }

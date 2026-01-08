@@ -37,49 +37,34 @@
         <div class="main-content">
             <!-- 项目介绍 -->
             <section class="about-section">
-                <div class="section-title" data-lang="project-intro">项目介绍</div>
+                <div class="section-title" data-lang="project-intro">project-intro</div>
                 <div class="about-content">
                     <p data-lang="project-desc">
-                        Flopsys AI 是一个专为AI基础设施设计的性能分析与成本优化平台。
-                        我们通过深度性能测试、TCO计算和智能ROI分析，帮助企业选择最优的
-                        AI训练与推理硬件配置方案。
+                        Flopsys AI is a performance analysis and cost optimization platform designed specifically for AI infrastructure.
+                        Through in-depth performance testing, TCO calculations, and intelligent configuration analysis,
                     </p>
                     <ul class="feature-list">
-                        <li data-lang="feature-1">实时性能监控与可视化分析</li>
-                        <li data-lang="feature-2">精准的总拥有成本(TCO)计算</li>
-                        <li data-lang="feature-3">多维度ROI排行榜对比</li>
-                        <li data-lang="feature-4">支持NVIDIA、AMD、华为等主流AI芯片</li>
-                        <li data-lang="feature-5">覆盖从36卡到576卡的扩展配置</li>
+                        <li data-lang="feature-1">cost optimization</li>
+                        <li data-lang="feature-2">accurate Total Cost of Ownership (TCO) calculation</li>
+                        <li data-lang="feature-3">multi-dimensional TPS leaderboard comparison</li>
+                        <li data-lang="feature-4">support for mainstream AI chips such as NVIDIA, AMD, Huawei</li>
+                        <li data-lang="feature-5">coverage of scalable configurations from 36 to 576 cards</li>
                     </ul>
                 </div>
             </section>
 
             <!-- 团队介绍 -->
             <section class="about-section">
-                <div class="section-title" data-lang="team-intro">核心团队</div>
+                <div class="section-title" data-lang="team-intro">core team</div>
                 <div class="team-grid">
                     <div class="team-member">
                         <div class="member-avatar">👤</div>
-                        <h3 data-lang="member-1-name">Dr. Alex Chen</h3>
-                        <p class="member-role" data-lang="member-1-role">首席技术官</p>
+                        <h3 data-lang="member-1-name">Jerry Liang</h3>
+                        <p class="member-role" data-lang="member-1-role">Technique Leader</p>
                         <p class="member-bio" data-lang="member-1-bio">
-                            10年AI基础设施优化经验，曾任Google TPU团队核心工程师
-                        </p>
-                    </div>
-                    <div class="team-member">
-                        <div class="member-avatar">👤</div>
-                        <h3 data-lang="member-2-name">Sarah Liu</h3>
-                        <p class="member-role" data-lang="member-2-role">产品负责人</p>
-                        <p class="member-bio" data-lang="member-2-bio">
-                            专注于AI性能分析工具的产品化，服务过50+企业客户
-                        </p>
-                    </div>
-                    <div class="team-member">
-                        <div class="member-avatar">👤</div>
-                        <h3 data-lang="member-3-name">Michael Zhang</h3>
-                        <p class="member-role" data-lang="member-3-role">首席架构师</p>
-                        <p class="member-bio" data-lang="member-3-bio">
-                            深度学习框架优化专家，开源社区核心贡献者
+                            AMD,S3,Enflame,Biren,XiaoMi,working experience for 15 years.
+                            10 years of sillicon design experience, specializing in GPU/CPU architectures.
+                            5 years of experience in AI infrastructure, specializing in performance optimization and cost analysis.
                         </p>
                     </div>
                 </div>
@@ -87,19 +72,19 @@
 
             <!-- 联系我们 -->
             <section class="about-section">
-                <div class="section-title" data-lang="contact-us">联系我们</div>
+                <div class="section-title" data-lang="contact-us">contact us</div>
                 <div class="contact-info">
                     <div class="contact-item">
                         <span class="contact-icon">📧</span>
-                        <span data-lang="email">contact@flopsys.ai</span>
+                        <span data-lang="email">contact@flopsys-tech.com</span>
                     </div>
                     <div class="contact-item">
                         <span class="contact-icon">🌐</span>
-                        <span data-lang="website">www.flopsys.ai</span>
+                        <span data-lang="website">www.flopsys-tech.com</span>
                     </div>
                     <div class="contact-item">
                         <span class="contact-icon">📍</span>
-                        <span data-lang="address">San Francisco, CA</span>
+                        <span data-lang="address">Singapore, SG</span>
                     </div>
                 </div>
             </section>
@@ -108,14 +93,20 @@
 
     <script type="module" src="js/i18n.js"></script>
     <script type="module">
-        import { updateLanguage } from './js/i18n.js';
-        
-        document.getElementById('lang-select').addEventListener('change', (e) => {
-            updateLanguage(e.target.value);
-        });
-        
-        // 初始化语言为英文
-        updateLanguage('en');
+        import { updateLanguage, currentLang } from './js/i18n.js';
+
+        const select = document.getElementById('lang-select');
+        if (select) {
+            // 页面加载时，下拉框展示当前语言
+            select.value = currentLang || 'en';
+
+            select.addEventListener('change', (e) => {
+                updateLanguage(e.target.value);
+            });
+        }
+
+        // 使用当前语言初始化整页文案
+        updateLanguage();
     </script>
 </body>
 </html>

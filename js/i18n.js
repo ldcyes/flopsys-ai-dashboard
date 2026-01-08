@@ -26,7 +26,7 @@ export const translations = {
         'pp': 'PP设置（多选）',
     'batch-size': 'Batch Size（多选）',
         'category-mode-label': '分类方式（仅一种生效）：',
-        'category-ffn-tp': '按 FFN TP 分类',
+        'category-ffn-ep': '按 FFN EP 分类',
         'category-attn-tp': '按 Attn TP 分类',
         'category-gpu': '按 GPU 型号分类',
         'category-pp': '按 PP 阶数分类',
@@ -36,7 +36,7 @@ export const translations = {
     'no-data': '暂无数据 - 请选择配置',
 
     // Profile 页面
-    'profile-title': '阶段分解分析',
+    'profile-title': 'op 分解分析',
     'profile-subtitle': '选择 GPU、卡数、场景（prefill / decode），查看各阶段耗时堆积柱状图',
     'profile-config': '配置选择',
     'profile-gpu': 'GPU 型号',
@@ -49,7 +49,7 @@ export const translations = {
     'profile-load': '加载图表',
 
         // TCO 页面
-        'tco-title': 'TCO计算器',
+        'tco-title': 'TCO计算',
         'tco-subtitle': '计算最优配置与总成本',
         'config-input': '配置输入',
         'card-price': '单卡每小时价格 ($)',
@@ -73,13 +73,13 @@ export const translations = {
     'tco-decode-best': 'Decode 最佳配置 (按 TPS per GPU)',
     'tco-decode-price': 'Decode 每 1M token 价格:',
     'tco-decode-none': 'Decode: 无满足条件配置',
-    'tco-prefill-best': 'Prefill 最佳配置 (TPS/gpu 且 TPS/request > 20)',
+    'tco-prefill-best': 'Prefill 最佳配置 (TPS/gpu)',
     'tco-prefill-price': 'Prefill 每 1M token 价格:',
-    'tco-prefill-none': 'Prefill: 无满足条件配置 (TPS/request > 20)',
+    'tco-prefill-none': 'Prefill: 无满足条件配置',
 
-        // 排行榜 页面
-        'leaderboard-title': '排行榜',
-        'leaderboard-subtitle': '对比不同硬件配置的ROI',
+    // 排行榜 页面
+    'leaderboard-title': '排行榜',
+    'leaderboard-subtitle': '对比不同硬件的TPS吞吐',
         'filter-config': '筛选配置',
     'leaderboard-mode': '场景',
     'leaderboard-prefill': 'Prefill',
@@ -102,33 +102,35 @@ export const translations = {
         'about-title': '关于 Flopsys AI',
         'about-subtitle': '专注于 AI 基础设施性能分析',
         'project-intro': '项目介绍',
-        'project-desc': 'Flopsys AI 是一个专注于 AI 基础设施的性能分析与成本优化平台。通过深度性能测试、TCO 计算和智能 ROI 分析，我们帮助企业为训练与推理场景选择最优硬件配置。',
+        'project-desc': 'Flopsys AI 是一个专注于 AI 基础设施的性能分析与成本优化平台。通过深度性能测试、TCO 计算，为训练与推理场景选择最优硬件配置。',
         'feature-1': '实时性能监控与可视化',
         'feature-2': '精确的总拥有成本 (TCO) 计算',
         'feature-3': '多维度 ROI 排行榜对比',
         'feature-4': '支持 NVIDIA / AMD / 华为等主流 AI 芯片',
         'feature-5': '覆盖 36 到 576 卡的可扩展配置',
         'team-intro': '核心团队',
-        'member-1-name': 'Alex Chen 博士',
-        'member-1-role': '首席技术官',
-        'member-1-bio': '10 年 AI 基础设施优化经验，前 Google TPU 团队资深工程师',
+        'member-1-name': 'Jerry Liang',
+        'member-1-role': '技术爱好者',
+        'member-1-bio': '15年工作经验, 包括10年GPU/CPU设计经验. 曾就职于AMD,S3,Enflame,Biren和小米，作为核心开发者参与多款世界级AI芯片架构设计.',
+
         'member-2-name': 'Sarah Liu',
         'member-2-role': '产品负责人',
-        'member-2-bio': '专注于 AI 性能分析工具产品化，曾服务 50+ 企业级客户',
+        'member-2-bio': '专注于 AI 性能分析工具产品化，曾服务 50+ 企业级客户.',
+
         'member-3-name': 'Michael Zhang',
         'member-3-role': '首席架构师',
         'member-3-bio': '深度学习框架优化专家，开源社区核心贡献者',
         'contact-us': '联系我们',
-        'email': 'contact@flopsys.ai',
-        'website': 'www.flopsys.ai',
-        'address': 'San Francisco, CA'
+        'email': 'contact@flopsys-tech.com',
+        'website': 'www.flopsys-tech.com',
+        'address': 'Singapore, SG'
     },
 
     en: {
         // Top & index
         'logo': 'Flopsys AI',
         'title': 'Performance Testing Platform',
-        'subtitle': 'View TPS performance in real time',
+        'subtitle': 'View TPS performance',
         'performance': 'Performance',
         'tco': 'TCO Calculator',
         'leaderboard': 'Leaderboard',
@@ -150,7 +152,7 @@ export const translations = {
         'pp': 'PP Settings (Multi-select)',
     'batch-size': 'Batch Size (Multi-select)',
         'category-mode-label': 'Category Mode (only one active):',
-        'category-ffn-tp': 'Group by FFN TP',
+        'category-ffn-ep': 'Group by FFN EP',
         'category-attn-tp': 'Group by Attn TP',
         'category-gpu': 'Group by GPU Model',
         'category-pp': 'Group by PP Degree',
@@ -194,16 +196,16 @@ export const translations = {
     'tco-no-config-found': 'No valid configuration found in decode / prefill tables',
     'tco-excel-error': 'Failed to read Excel. Please check decode_all.xlsx / prefill_all.xlsx exist and format is correct',
     'tco-result-header': 'Best Configuration & Price',
-    'tco-decode-best': 'Decode Best Config (by TPS per GPU)',
+    'tco-decode-best': 'Decode Best Config (by TPS per GPU, and TPS per user >= 20)',
     'tco-decode-price': 'Decode Price per 1M tokens:',
     'tco-decode-none': 'Decode: No configuration matches the conditions',
-    'tco-prefill-best': 'Prefill Best Config (TPS/gpu and TPS/request > 20)',
+    'tco-prefill-best': 'Prefill Best Config (TPS/gpu',
     'tco-prefill-price': 'Prefill Price per 1M tokens:',
-    'tco-prefill-none': 'Prefill: No configuration matches the conditions (TPS/request > 20)',
+    'tco-prefill-none': 'Prefill: No configuration matches the conditions',
 
-        // Leaderboard page
-        'leaderboard-title': 'Leaderboard',
-        'leaderboard-subtitle': 'Compare ROI across hardware configurations',
+    // Leaderboard page
+    'leaderboard-title': 'Leaderboard',
+    'leaderboard-subtitle': 'Compare TPS throughput across hardware',
         'filter-config': 'Filter Configuration',
     'leaderboard-mode': 'Scenario',
     'leaderboard-prefill': 'Prefill',
@@ -233,19 +235,20 @@ export const translations = {
         'feature-4': 'Support for NVIDIA, AMD, Huawei and other major AI chips',
         'feature-5': 'Scalable configurations from 36 to 576 cards',
         'team-intro': 'Core Team',
-        'member-1-name': 'Dr. Alex Chen',
-        'member-1-role': 'Chief Technology Officer',
-        'member-1-bio': '10 years of AI infrastructure optimization experience, former senior engineer in Google TPU team',
+        'member-1-name': 'Jerry Liang',
+        'member-1-role': 'Technical Enthusiast',
+        'member-1-bio': '15 years of work experience, including 10 years of GPU/CPU design experience. Formerly worked at AMD, S3, Enflame, Biren, and Xiaomi, participating as a core developer in the architecture design of several world-class AI chips.',
+
         'member-2-name': 'Sarah Liu',
-        'member-2-role': 'Product Lead',
-        'member-2-bio': 'Focused on productizing AI performance analytics tools, has served 50+ enterprise customers',
+        'member-2-role': 'Product Manager',
+        'member-2-bio': 'Focused on AI performance analysis tool productization, served 50+ enterprise clients.',
         'member-3-name': 'Michael Zhang',
-        'member-3-role': 'Principal Architect',
-        'member-3-bio': 'Expert in deep learning framework optimization, core contributor in open source community',
+        'member-3-role': 'Chief Architect',
+        'member-3-bio': 'Deep learning framework optimization expert, core contributor to open source community',
         'contact-us': 'Contact Us',
-        'email': 'contact@flopsys.ai',
-        'website': 'www.flopsys.ai',
-        'address': 'San Francisco, CA'
+        'email': 'contact@flopsys-tech.com',
+        'website': 'www.flopsys-tech.com',
+        'address': 'Singapore, SG'
     },
 
     es: {
@@ -274,7 +277,7 @@ export const translations = {
         'pp': 'Configuración PP (Multi-selección)',
     'batch-size': 'Tamaño de batch (Multi-selección)',
         'category-mode-label': 'Modo de clasificación (solo uno activo):',
-        'category-ffn-tp': 'Clasificar por FFN TP',
+        'category-ffn-ep': 'Clasificar por FFN EP',
         'category-attn-tp': 'Clasificar por Attn TP',
         'category-gpu': 'Clasificar por modelo de GPU',
         'category-pp': 'Clasificar por PP',
@@ -305,16 +308,16 @@ export const translations = {
     'tco-no-config-found': 'No se encontró configuración válida en las tablas de decode / prefill',
     'tco-excel-error': 'Error al leer el Excel. Verifique que existan decode_all.xlsx / prefill_all.xlsx y tengan el formato correcto',
     'tco-result-header': 'Configuración y precio óptimos',
-    'tco-decode-best': 'Mejor configuración de Decode (por TPS por GPU)',
+    'tco-decode-best': 'Mejor configuración de Decode (por TPS por GPU y TPS por usuario >= 20)',
     'tco-decode-price': 'Precio de Decode por 1M tokens:',
     'tco-decode-none': 'Decode: No hay configuración que cumpla las condiciones',
-    'tco-prefill-best': 'Mejor configuración de Prefill (TPS/gpu y TPS/request > 20)',
+    'tco-prefill-best': 'Mejor configuración de Prefill (TPS/gpu)',
     'tco-prefill-price': 'Precio de Prefill por 1M tokens:',
-    'tco-prefill-none': 'Prefill: No hay configuración que cumpla las condiciones (TPS/request > 20)',
+    'tco-prefill-none': 'Prefill: No hay configuración que cumpla las condiciones',
 
-        // Página de Ranking
-        'leaderboard-title': 'Tabla de Clasificación',
-        'leaderboard-subtitle': 'Comparar ROI en configuraciones de hardware',
+    // Página de Ranking
+    'leaderboard-title': 'Tabla de Clasificación',
+    'leaderboard-subtitle': 'Comparar el rendimiento de TPS entre hardware',
         'filter-config': 'Configuración de Filtro',
     'leaderboard-mode': 'Escenario',
     'leaderboard-prefill': 'Prefill',
@@ -343,20 +346,22 @@ export const translations = {
         'feature-3': 'Comparación de tabla de clasificación ROI multidimensional',
         'feature-4': 'Soporte para NVIDIA, AMD, Huawei y otros chips AI principales',
         'feature-5': 'Cobertura de configuraciones escalables de 36 a 576 tarjetas',
-        'team-intro': 'Equipo Principal',
-        'member-1-name': 'Dr. Alex Chen',
-        'member-1-role': 'Director de Tecnología',
-        'member-1-bio': '10 años de experiencia en optimización de infraestructura AI, ingeniero principal anterior del equipo Google TPU',
-        'member-2-name': 'Sarah Liu',
-        'member-2-role': 'Líder de Producto',
-        'member-2-bio': 'Enfocada en productización de herramientas de análisis de rendimiento AI, ha servido a más de 50 clientes empresariales',
-        'member-3-name': 'Michael Zhang',
-        'member-3-role': 'Arquitecto Principal',
-        'member-3-bio': 'Experto en optimización de frameworks de deep learning, contribuidor principal de la comunidad open source',
-        'contact-us': 'Contáctanos',
-        'email': 'contact@flopsys.ai',
-        'website': 'www.flopsys.ai',
-        'address': 'San Francisco, CA'
+        'team-intro': 'Équipe Principale',
+'member-1-name': 'Jerry Liang',
+'member-1-role': 'Passionné de technologie',
+'member-1-bio': '15 ans d’expérience dans le secteur, dont 10 ans en conception de GPU/CPU. A travaillé chez AMD, S3, Enflame, Biren et Xiaomi en tant que développeur clé sur plusieurs architectures de puces d’IA de classe mondiale.',
+
+'member-2-name': 'Sarah Liu',
+'member-2-role': 'Responsable Produit',
+'member-2-bio': 'Spécialisée dans la mise sur le marché d’outils d’analyse de performance IA, avec une expérience auprès de plus de 50 clients entreprises.',
+
+'member-3-name': 'Michael Zhang',
+'member-3-role': 'Architecte en chef',
+'member-3-bio': 'Expert en optimisation de frameworks de deep learning et contributeur clé dans la communauté open source.',
+        'contact-us': 'Contact Us',
+        'email': 'contact@flopsys-tech.com',
+        'website': 'www.flopsys-tech.com',
+        'address': 'Singapore, SG'
     },
 
     fr: {
@@ -385,7 +390,7 @@ export const translations = {
         'pp': 'Configuration PP (Multi-sélection)',
     'batch-size': 'Taille de batch (Multi-sélection)',
         'category-mode-label': 'Mode de classification (un seul actif) :',
-        'category-ffn-tp': 'Classer par FFN TP',
+        'category-ffn-ep': 'Classer par FFN EP',
         'category-attn-tp': 'Classer par Attn TP',
         'category-gpu': 'Classer par modèle de GPU',
         'category-pp': 'Classer par PP',
@@ -416,16 +421,16 @@ export const translations = {
     'tco-no-config-found': 'Aucune configuration valide trouvée dans les tableaux decode / prefill',
     'tco-excel-error': 'Échec de la lecture du fichier Excel. Vérifiez que decode_all.xlsx / prefill_all.xlsx existent et que le format est correct',
     'tco-result-header': 'Configuration et prix optimaux',
-    'tco-decode-best': 'Meilleure configuration Decode (par TPS par GPU)',
+    'tco-decode-best': 'Meilleure configuration Decode (par TPS par GPU, et TPS par utilisateur >= 20)',
     'tco-decode-price': 'Prix Decode par 1M tokens :',
     'tco-decode-none': 'Decode : Aucune configuration ne correspond aux conditions',
-    'tco-prefill-best': 'Meilleure configuration Prefill (TPS/gpu et TPS/request > 20)',
+    'tco-prefill-best': 'Meilleure configuration Prefill (TPS/gpu)',
     'tco-prefill-price': 'Prix Prefill par 1M tokens :',
-    'tco-prefill-none': 'Prefill : Aucune configuration ne correspond aux conditions (TPS/request > 20)',
+    'tco-prefill-none': 'Prefill : Aucune configuration ne correspond aux conditions',
 
-        // Page Classement
-        'leaderboard-title': 'Tableau de Classement',
-        'leaderboard-subtitle': 'Comparer le ROI des configurations matérielles',
+    // Page Classement
+    'leaderboard-title': 'Tableau de Classement',
+    'leaderboard-subtitle': 'Comparer le débit TPS des matériels',
         'filter-config': 'Configuration de Filtre',
     'leaderboard-mode': 'Scénario',
     'leaderboard-prefill': 'Prefill',
@@ -455,34 +460,47 @@ export const translations = {
         'feature-4': 'Support pour NVIDIA, AMD, Huawei et autres puces AI principales',
         'feature-5': 'Couverture de configurations évolutives de 36 à 576 cartes',
         'team-intro': 'Équipe Principale',
-        'member-1-name': 'Dr. Alex Chen',
-        'member-1-role': 'Directeur Technique',
-        'member-1-bio': '10 ans d\'expérience en optimisation d\'infrastructure AI, ancien ingénieur principal de l\'équipe Google TPU',
-        'member-2-name': 'Sarah Liu',
-        'member-2-role': 'Responsable Produit',
-        'member-2-bio': 'Concentrée sur la productisation d\'outils d\'analyse de performance AI, a servi plus de 50 clients entreprise',
-        'member-3-name': 'Michael Zhang',
-        'member-3-role': 'Architecte Principal',
-        'member-3-bio': 'Expert en optimisation de frameworks de deep learning, contributeur principal de la communauté open source',
-        'contact-us': 'Contactez-nous',
-        'email': 'contact@flopsys.ai',
-        'website': 'www.flopsys.ai',
-        'address': 'San Francisco, CA'
+'member-1-name': 'Jerry Liang',
+'member-1-role': 'Passionné de technologie',
+'member-1-bio': '15 ans d’expérience dans le secteur, dont 10 ans en conception de GPU/CPU. A travaillé chez AMD, S3, Enflame, Biren et Xiaomi en tant que développeur clé sur plusieurs architectures de puces d’IA de classe mondiale.',
+
+'member-2-name': 'Sarah Liu',
+'member-2-role': 'Responsable Produit',
+'member-2-bio': 'Spécialisée dans la mise sur le marché d’outils d’analyse de performance IA, avec une expérience auprès de plus de 50 clients entreprises.',
+
+'member-3-name': 'Michael Zhang',
+'member-3-role': 'Architecte en chef',
+'member-3-bio': 'Deep learning framework optimization expert, core contributor to open source community',
+        'contact-us': 'Contact Us',
+        'email': 'contact@flopsys-tech.com',
+        'website': 'www.flopsys-tech.com',
+        'address': 'Singapore, SG'
     }
 };
 
-export let currentLang = 'zh';
+// 默认语言：优先使用本地存储，其次使用英文
+const savedLang = typeof window !== 'undefined'
+    ? window.localStorage.getItem('flopsys-lang')
+    : null;
 
-export function changeLanguage(lang) {
-    currentLang = lang;
-    updateLanguage();
-}
+export let currentLang = savedLang || 'en';
 
-export function updateLanguage() {
+export function updateLanguage(lang) {
+    // 如果传入了新的语言，则更新 currentLang 并写入本地存储
+    if (lang) {
+        currentLang = lang;
+        try {
+            window.localStorage.setItem('flopsys-lang', currentLang);
+        } catch (e) {
+            // 本地存储不可用时静默失败
+        }
+    }
+
+    // 根据当前语言刷新所有带 data-lang 的元素
     document.querySelectorAll('[data-lang]').forEach(element => {
         const key = element.getAttribute('data-lang');
         if (translations[currentLang] && translations[currentLang][key]) {
-            element.textContent = translations[currentLang][key];
+                                element.textContent = translations[currentLang][key];
         }
     });
 }

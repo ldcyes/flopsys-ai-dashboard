@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>性能测试分析平台</title>
+    <title>FLOPSYS AI</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
         <!-- 用于解析 xlsx 数据文件 -->
@@ -14,12 +14,17 @@
     <!-- 导航栏 -->
     <nav class="navbar">
         <div class="nav-left">
-            <div class="logo" data-lang="logo">Flopsys AI</div>
+            <div class="logo" data-lang="logo">
+                   <img src="./data/flopsys_90.png"
+     alt="Flopsys AI"
+     style="height:32px; width:auto; vertical-align:middle; margin-right:8px;" />
+                   <span>FLOPSYS</span>
+            </div>
             <div class="nav-links">
-                <a href="index.html" class="nav-link active" data-lang="performance">性能测试</a>
-                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
-                <a href="profile.html" class="nav-link" data-lang="profile">阶段分解</a>
-                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">排行榜</a>
+                <a href="index.html" class="nav-link active" data-lang="performance">performance</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO calculator</a>
+                <a href="profile.html" class="nav-link" data-lang="profile">profile</a>
+                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">leaderboard</a>
                 <a href="about.html" class="nav-link" data-lang="about">About Us</a>
             </div>
         </div>
@@ -35,27 +40,27 @@
 
     <div class="container">
         <div class="header">
-            <h1 data-lang="title">性能测试分析平台</h1>
-            <p data-lang="subtitle">实时查看不同配置下的TPS性能表现</p>
+            <h1 data-lang="title">Performance Testing Analysis Platform</h1>
+            <p data-lang="subtitle">Real-time view of TPS performance under different configurations</p>
         </div>
 
         <div class="main-content">
-            <!-- 模型与序列配置 -->
+            <!-- Model and Sequence Configuration -->
             <section class="controls-section">
-                <div class="section-title" data-lang="model-config">模型与序列配置</div>
+                <div class="section-title" data-lang="model-config">Model and Sequence Configuration</div>
                 <div class="model-sequence-grid">
                     <div class="control-group">
-                        <label for="model-select" data-lang="model">模型选择</label>
+                        <label for="model-select" data-lang="model">Model Selection</label>
                         <select id="model-select">
-                            <option value="" data-lang="select-model">请选择模型</option>
+                            <option value="" data-lang="select-model">Please select a model</option>
                             <option value="Deep-Seekerv3">DeepSeekR1</option>
                         </select>
                     </div>
                     
                     <div class="control-group">
-                        <label for="card-count-select" data-lang="card-count">卡数量</label>
+                        <label for="card-count-select" data-lang="card-count">Card Count</label>
                         <select id="card-count-select">
-                            <option value="" data-lang="select-card">请选择卡数量</option>
+                            <option value="" data-lang="select-card">Please select card count</option>
                             <option value="36">36</option>
                             <option value="72">72</option>
                             <option value="144">144</option>
@@ -65,7 +70,7 @@
                     </div>
                     
                     <div class="control-group">
-                        <label for="mode-select" data-lang="mode">场景</label>
+                        <label for="mode-select" data-lang="mode">Scenario</label>
                         <select id="mode-select">
                             <option value="decode" data-lang="mode-decode">Decode</option>
                             <option value="prefill" data-lang="mode-prefill">Prefill</option>
@@ -93,56 +98,50 @@
                 </div>
                 <!-- 分类选择：一次只允许一种分类方式，例如按 GPU 或 ffn tp 分类上色 -->
                 <div class="control-group" style="margin-top: 8px;">
-                    <label for="category-key-select" data-lang="category-mode-label">分类方式（仅一种生效）：</label>
+                    <label for="category-key-select" data-lang="category-mode-label">Category Mode (only one effective):</label>
                     <select id="category-key-select">
-                        <option value="ffn tp" data-lang="category-ffn-tp">按 FFN TP 分类</option>
-                        <option value="attn tp" data-lang="category-attn-tp">按 Attn TP 分类</option>
-                        <option value="GPU" data-lang="category-gpu">按 GPU 型号分类</option>
-                        <option value="pp" data-lang="category-pp">按 PP 阶数分类</option>
-                        <option value="Batch" data-lang="category-batch">按 Batch Size 分类</option>
+                        <option value="ffn ep" data-lang="category-ffn-ep">By FFN TP</option>
+                        <option value="attn tp" data-lang="category-attn-tp">By Attn TP</option>
+                        <option value="GPU" data-lang="category-gpu">By GPU Model</option>
+                        <option value="Batch" data-lang="category-batch">By Batch Size</option>
                     </select>
                 </div>
                 <div class="legend-container" id="legend-container">
                     <div class="legend-item">
-                        <span data-lang="no-data">暂无数据 - 请选择配置</span>
+                        <span data-lang="no-data">No data available - please select configuration</span>
                     </div>
                 </div>
             </section>
 
-            <!-- 硬件配置选项 -->
+            <!-- Hardware Configuration Options -->
             <section class="hardware-section">
-                <div class="section-title" data-lang="hardware-config">硬件配置选项</div>
+                <div class="section-title" data-lang="hardware-config">Hardware Configuration Options</div>
                 
                 <div class="control-group">
-                    <label data-lang="hardware-select">硬件配置（多选）</label>
+                    <label data-lang="hardware-select">Hardware Configuration (multiple selection)</label>
                     <div class="checkbox-group" id="hardware-checkboxes"></div>
                 </div>
 
                 <div class="controls-grid">
                     <div class="control-group">
-                        <label data-lang="attn-tp">Attention TP设置（多选）</label>
+                        <label data-lang="attn-tp">Attention TP (multiple selection)</label>
                         <div class="checkbox-group" id="attn-tp-group"></div>
                     </div>
 
                     <div class="control-group">
-                        <label data-lang="ffn-tp">FFN TP设置（多选）</label>
+                        <label data-lang="ffn-tp">FFN TP (multiple selection)</label>
                         <div class="checkbox-group" id="ffn-tp-group"></div>
                     </div>
 
                     <div class="control-group">
-                        <label data-lang="pp">PP设置（多选）</label>
-                        <div class="checkbox-group" id="pp-group"></div>
-                    </div>
-
-                    <div class="control-group">
-                        <label data-lang="batch-size">Batch Size（多选）</label>
+                        <label data-lang="batch-size">Batch Size (multiple selection)</label>
                         <div class="checkbox-group" id="batch-group"></div>
                     </div>
                 </div>
 
                 <div class="button-group">
-                    <button class="btn btn-secondary" id="reset-btn" data-lang="reset">重置配置</button>
-                    <button class="btn btn-primary" id="update-btn" data-lang="update">更新图表</button>
+                    <button class="btn btn-secondary" id="reset-btn" data-lang="reset">Reset Configuration</button>
+                    <button class="btn btn-primary" id="update-btn" data-lang="update">Update Chart</button>
                 </div>
             </section>
         </div>
@@ -152,6 +151,21 @@
     <script type="module" src="js/data.js"></script>
     <script type="module" src="js/chart.js"></script>
     <script type="module" src="js/main.js"></script>
+    <script type="module">
+    import { updateLanguage, currentLang } from './js/i18n.js';
+
+    const select = document.getElementById('lang-select');
+    if (select) {
+        // 页面加载时，下拉框展示当前语言
+        select.value = currentLang || 'en';
+
+        select.addEventListener('change', (e) => {
+            updateLanguage(e.target.value);
+        });
+    }
+    // 使用当前语言初始化整页文案
+    updateLanguage();
+    </script>
 
 </body>
 </html>

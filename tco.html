@@ -11,10 +11,10 @@
         <div class="nav-left">
             <div class="logo" data-lang="logo">Flopsys AI</div>
             <div class="nav-links">
-                <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
-                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
-                <a href="profile.html" class="nav-link" data-lang="profile">阶段分解</a>
-                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">排行榜</a>
+                <a href="index.html" class="nav-link" data-lang="performance">performance</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO calculator</a>
+                <a href="profile.html" class="nav-link" data-lang="profile">stage decomposition</a>
+                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">leaderboard</a>
                 <a href="about.html" class="nav-link" data-lang="about">About Us</a>
             </div>
         </div>
@@ -30,19 +30,19 @@
 
     <div class="container">
         <div class="header">
-            <h1 data-lang="tco-title">TCO计算器</h1>
-            <p data-lang="tco-subtitle">计算最优配置与总拥有成本</p>
+            <h1 data-lang="tco-title">TCO calculator</h1>
+            <p data-lang="tco-subtitle">Calculate optimal configuration and total cost of ownership</p>
         </div>
 
         <div class="main-content">
             <!-- 配置输入区 -->
             <section class="controls-section">
-                <div class="section-title" data-lang="config-input">配置输入</div>
+                <div class="section-title" data-lang="config-input">Configuration Input</div>
                 <div class="tco-input-grid">
                     <div class="control-group">
-                        <label for="tco-gpu-select" data-lang="tco-gpu">GPU 型号</label>
+                        <label for="tco-gpu-select" data-lang="tco-gpu">GPU Model</label>
                         <select id="tco-gpu-select">
-                            <option value="" data-lang="tco-select-gpu">请选择 GPU</option>
+                            <option value="" data-lang="tco-select-gpu">Please select GPU</option>
                             <option value="HGX-H200">HGX-H200</option>
                             <option value="DGX-B200">DGX-B200</option>
                             <option value="DGX-B300">DGX-B300</option>
@@ -55,40 +55,48 @@
                     </div>
 
                     <div class="control-group">
-                        <label for="tco-input-seq" data-lang="tco-input-seq">Input 序列长度</label>
+                        <label for="tco-model-select" data-lang="model">Model Selection</label>
+                        <select id="tco-model-select">
+                            <option value="" data-lang="select-model">Please select model</option>
+                            <option value="Deep-Seekerv3">Deep-Seekerv3</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="tco-input-seq" data-lang="tco-input-seq">Input Sequence Length</label>
                         <select id="tco-input-seq">
-                            <option value="" data-lang="tco-select-input">请选择 Input 序列</option>
+                            <option value="" data-lang="tco-select-input">Please select Input Sequence</option>
                             <option value="1K">1K</option>
                             <option value="8K">8K</option>
                         </select>
                     </div>
 
                     <div class="control-group">
-                        <label for="tco-output-seq" data-lang="tco-output-seq">Output 序列长度</label>
+                        <label for="tco-output-seq" data-lang="tco-output-seq">Output Sequence Length</label>
                         <select id="tco-output-seq">
-                            <option value="" data-lang="tco-select-output">请选择 Output 序列</option>
+                            <option value="" data-lang="tco-select-output">Please select Output Sequence</option>
                             <option value="1K">1K</option>
                             <option value="8K">8K</option>
                         </select>
                     </div>
 
                     <div class="control-group">
-                        <label for="card-price-input" data-lang="card-price">单卡小时价格 ($)</label>
+                        <label for="card-price-input" data-lang="card-price">Card Hourly Price ($)</label>
                         <input type="number" id="card-price-input" placeholder="0.00" step="0.01">
                     </div>
                 </div>
                 
                 <div class="button-group">
-                    <button class="btn btn-primary" id="calculate-tco-btn" data-lang="calculate">计算最优配置</button>
+                    <button class="btn btn-primary" id="calculate-tco-btn" data-lang="calculate">Calculate Optimal Configuration</button>
                 </div>
             </section>
 
             <!-- 结果展示区 -->
             <section class="results-section">
-                <div class="section-title" data-lang="optimal-config">最优配置结果</div>
+                <div class="section-title" data-lang="optimal-config">Optimal Configuration Results</div>
                 <div class="results-grid" id="tco-results">
                     <div class="result-card empty-state" data-lang="no-calculation">
-                        请点击"计算最优配置"查看结果
+                        Please click "Calculate Optimal Configuration" to view results
                     </div>
                 </div>
             </section>
@@ -96,19 +104,24 @@
     </div>
 
     <script type="module" src="js/i18n.js"></script>
+    <!-- SheetJS for parsing xlsx files (provides global XLSX) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script type="module" src="js/data.js"></script>
     <script type="module" src="js/tco.js"></script>
     <script type="module">
-        import { updateLanguage } from './js/i18n.js';
+        import { updateLanguage, currentLang } from './js/i18n.js';
 
         const select = document.getElementById('lang-select');
         if (select) {
+            // 页面加载时，下拉框展示当前语言
+            select.value = currentLang || 'en';
+
             select.addEventListener('change', (e) => {
                 updateLanguage(e.target.value);
             });
         }
-        // 初始化语言为英文
-        updateLanguage('en');
+        // 使用当前语言初始化整页文案
+        updateLanguage();
     </script>
 </body>
 </html>

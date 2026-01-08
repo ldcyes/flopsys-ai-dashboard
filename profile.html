@@ -3,20 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>阶段分解分析 - 性能测试分析平台</title>
+    <title>FLOPSYS AI</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .chart-wrapper {
+            position: relative;
+            height: 700px;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-left">
             <div class="logo" data-lang="logo">Flopsys AI</div>
             <div class="nav-links">
-                <a href="index.html" class="nav-link" data-lang="performance">性能测试</a>
-                <a href="tco.html" class="nav-link" data-lang="tco">TCO计算器</a>
-                <a href="profile.html" class="nav-link active" data-lang="profile">阶段分解</a>
-                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">排行榜</a>
+                <a href="index.html" class="nav-link" data-lang="performance">performance</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO calculator</a>
+                <a href="profile.html" class="nav-link active" data-lang="profile">profile</a>
+                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">leaderboard</a>
                 <a href="about.html" class="nav-link" data-lang="about">About Us</a>
             </div>
         </div>
@@ -32,29 +38,42 @@
 
     <div class="container">
         <div class="header">
-            <h1 data-lang="profile-title">阶段分解分析</h1>
-            <p data-lang="profile-subtitle">选择 GPU、卡数、场景（prefill / decode），查看各阶段耗时堆积柱状图</p>
+            <h1 data-lang="profile-title">Stage Decomposition Analysis</h1>
+            <p data-lang="profile-subtitle">Select GPU, card count, and scenario (prefill / decode) to view stacked bar charts of time consumption for each stage</p>
         </div>
 
         <div class="main-content">
-            <!-- 控制区域 -->
+            <!-- Control Area -->
             <section class="controls-section">
-                <div class="section-title" data-lang="profile-config">配置选择</div>
+                <div class="section-title" data-lang="profile-config">Configuration Selection</div>
                 <div class="model-sequence-grid">
                     <div class="control-group">
-                        <label for="gpu-select" data-lang="profile-gpu">GPU 型号</label>
+                        <label for="gpu-select" data-lang="profile-gpu">GPU Model</label>
                         <select id="gpu-select">
-                            <option value="" data-lang="profile-select-gpu">请选择 GPU</option>
+                            <option value="" data-lang="profile-select-gpu">Please select GPU</option>
+                            <option value="HGX-H200">HGX-H200</option>
                             <option value="DGX-B200">DGX-B200</option>
-                            <option value="H800">H800</option>
-                            <option value="H20">H20</option>
+                            <option value="DGX-B300">DGX-B300</option>
+                            <option value="GB200-NVL72">GB200-NVL72</option>
+                            <option value="GB300-NVL72">GB300-NVL72</option>
+                            <option value="Rubin-NV144">Rubin-NV144</option>
+                            <option value="Rubin-NV576">Rubin-NV576</option>
+                             <option value="H800">H800</option>
                         </select>
                     </div>
 
                     <div class="control-group">
-                        <label for="gpu-num-select" data-lang="profile-gpu-num">GPU 数量</label>
+                        <label for="profile-model-select" data-lang="model">Model Selection</label>
+                        <select id="profile-model-select">
+                            <option value="" data-lang="select-model">Please select model</option>
+                            <option value="Deep-Seekerv3">Deep-Seekerv3</option>
+                        </select>
+                    </div>
+
+                    <div class="control-group">
+                        <label for="gpu-num-select" data-lang="profile-gpu-num">GPU Count</label>
                         <select id="gpu-num-select">
-                            <option value="" data-lang="profile-all">全部</option>
+                            <option value="" data-lang="profile-all">All</option>
                             <option value="36">36</option>
                             <option value="72">72</option>
                             <option value="144">144</option>
@@ -64,7 +83,7 @@
                     </div>
 
                     <div class="control-group">
-                        <label for="mode-select" data-lang="profile-mode">场景</label>
+                        <label for="mode-select" data-lang="profile-mode">Scenario</label>
                         <select id="mode-select">
                             <option value="decode" data-lang="profile-decode">decode</option>
                             <option value="prefill" data-lang="profile-prefill">prefill</option>
@@ -73,7 +92,7 @@
 
                     <div class="control-group">
                         <label>&nbsp;</label>
-                        <button class="btn btn-primary" id="load-btn" data-lang="profile-load">加载图表</button>
+                        <button class="btn btn-primary" id="load-btn" data-lang="profile-load">Load Chart</button>
                     </div>
                 </div>
             </section>
@@ -91,16 +110,40 @@
     <script type="module" src="js/i18n.js"></script>
     <script src="js/profile.js" type="module"></script>
     <script type="module">
-        import { updateLanguage } from './js/i18n.js';
+        import { updateLanguage, currentLang } from './js/i18n.js';
 
         const select = document.getElementById('lang-select');
         if (select) {
+            // 页面加载时，下拉框展示当前语言
+            select.value = currentLang || 'en';
+
             select.addEventListener('change', (e) => {
                 updateLanguage(e.target.value);
             });
         }
-        // 初始化语言为英文
-        updateLanguage('en');
+        // 使用当前语言初始化整页文案
+        updateLanguage();
+    </script>
+    <script>
+        // 根据选择过滤行：模型（可选）+ GPU 型号 + GPU 数量（可选）
+        function filterRows(rows) {
+          const model = document.getElementById('profile-model-select')?.value; // 列名 model
+          const gpu = document.getElementById('gpu-select').value;             // 列名 GPU
+          const gpuNum = document.getElementById('gpu-num-select').value;      // 列名 Gpu num
+
+          return rows.filter(row => {
+            if (model && String(row['model']).trim() !== String(model).trim()) {
+              return false;
+            }
+            if (gpu && String(row['GPU']).trim() !== String(gpu).trim()) {
+              return false;
+            }
+            if (gpuNum && String(row['Gpu num']).trim() !== String(gpuNum).trim()) {
+              return false;
+            }
+            return true;
+          });
+        }
     </script>
 </body>
 </html>

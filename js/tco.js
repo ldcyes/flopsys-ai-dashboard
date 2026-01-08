@@ -2,8 +2,37 @@ import { updateLanguage, currentLang, translations } from './i18n.js';
 import { loadExcelData } from './data.js';
 
 document.addEventListener('DOMContentLoaded', function() {
+    // 默认单卡价格设置为 2 美金（如用户未填写）
+    const priceInput = document.getElementById('card-price-input');
+    if (priceInput && !priceInput.value) {
+        priceInput.value = '2';
+    }
+
+    // 下拉框默认选择第一个有效配置（跳过占位项）
+    function setDefaultSelectValue(selectId) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        for (let i = 0; i < select.options.length; i++) {
+            const opt = select.options[i];
+            if (opt.value !== '') {
+                select.value = opt.value;
+                break;
+            }
+        }
+    }
+
+    setDefaultSelectValue('tco-gpu-select');
+    setDefaultSelectValue('tco-model-select');
+    setDefaultSelectValue('tco-input-seq');
+    setDefaultSelectValue('tco-output-seq');
+
     bindEvents();
     updateLanguage(currentLang);
+    const langSelect = document.getElementById('lang-select');
+if (langSelect) {
+    langSelect.value = currentLang || 'en';
+}
+updateLanguage();
 });
 
 function bindEvents() {
@@ -14,13 +43,15 @@ function bindEvents() {
 }
 
 function calculateTCO() {
+
     const gpu = document.getElementById('tco-gpu-select').value;
+    const model = document.getElementById('tco-model-select').value;
     const inputSeq = document.getElementById('tco-input-seq').value;
     const outputSeq = document.getElementById('tco-output-seq').value;
     const cardPrice = parseFloat(document.getElementById('card-price-input').value);
     
-    if (!gpu || !inputSeq || !outputSeq || !cardPrice) {
-        const msg = translations[currentLang]?.['tco-input-missing'] || '请先选择 GPU、Input/Output 序列并填写单卡价格';
+    if (!gpu || !model || !inputSeq || !outputSeq || !cardPrice) {
+        const msg = translations[currentLang]?.['tco-input-missing'] || 'please select Model, GPU, Input/Output and price per card';
         alert(msg);
         return;
     }
@@ -31,13 +62,16 @@ function calculateTCO() {
         const outputPattern = outputSeq === '8K' ? 'O8192' : 'O1024';
 
         // 从 decode / prefill 表中寻找该 GPU 在指定 input/output 场景下，
-        // TPS per gpu 最大且（对 prefill 要求 TPS per user > 20）的配置
+        // - decode : TPS per gpu 最大的配置
+        // - prefill: TPS per gpu 最大且 TPS per user >= 20 的配置
         Promise.all([
-            loadBestConfig('data/final_decode_all.xlsx', gpu, { configSubstring: outputPattern, minTpsPerUser: 20 }),
-            loadBestConfig('data/final_prefill_all.xlsx', gpu, { configSubstring: inputPattern, minTpsPerUser: 20 })
+            // decode 不强制 TPS per user 下限
+            loadBestConfig('data/final_decode_all.xlsx' , gpu, { configSubstring: outputPattern, minTpsPerUser: 20 }),
+            // prefill 需要 TPS per user >= 20
+            loadBestConfig('data/final_prefill_all.xlsx', gpu, { configSubstring: inputPattern })
         ]).then(([decodeCfg, prefillCfg]) => {
         if (!decodeCfg && !prefillCfg) {
-            const msg = translations[currentLang]?.['tco-no-config-found'] || '在 decode / prefill 表中未找到满足条件的配置';
+            const msg = translations[currentLang]?.['tco-no-config-found'] || 'no matching config found in decode / prefill sheets';
             alert(msg);
             return;
         }
@@ -45,15 +79,16 @@ function calculateTCO() {
         displayResults(gpu, inputSeq, outputSeq, cardPrice, decodeCfg, prefillCfg);
     }).catch(err => {
         console.error(err);
-        const msg = translations[currentLang]?.['tco-excel-error'] || '读取 Excel 失败，请检查 decode_all.xlsx / prefill_all.xlsx 是否存在且格式正确';
+        const msg = translations[currentLang]?.['tco-excel-error'] || 'Failed to read Excel, please check if the xlsx file exists and is correctly formatted';
         alert(msg);
     });
 }
 
 async function loadBestConfig(filePath, gpu, options = {}) {
-    const { minTpsPerUser = 0, configSubstring = null } = options;
+  const { minTpsPerUser = 0, configSubstring = null } = options;
   const rows = await loadExcelData(filePath);
 
+  console.log('filter', filePath, 'for GPU:', gpu, 'with options:', options);
   const filtered = rows.filter(r => {
     if (String(r['GPU']).trim() !== String(gpu).trim()) return false;
         if (configSubstring && (!r['Config_Name'] || !String(r['Config_Name']).includes(configSubstring))) return false;
@@ -76,6 +111,7 @@ async function loadBestConfig(filePath, gpu, options = {}) {
     batch: best['Batch'] ?? null,
     attnTp: best['attn tp'] ?? null,
     ffnTp: best['ffn tp'] ?? null,
+    ffnEp: best['ffn ep'] ?? null,
     pp: best['pp'] ?? null,
     configName: best['Config_Name'] ?? null
   };
@@ -107,39 +143,47 @@ function displayResults(gpu, inputSeq, outputSeq, cardPrice, decodeCfg, prefillC
         <div class="result-details">
             ${decodeCfg ? `
             <div class="result-item">
-                <span class="result-label">${t['tco-decode-best'] || 'Decode 最佳配置 (按 TPS per GPU)'}</span>
-                <span class="result-value">
-                    ${decodeCfg.configName || ''}
-                    ${decodeCfg.pp ? ` | pp=${decodeCfg.pp}` : ''}
-                    ${decodeCfg.attnTp ? ` | attn tp=${decodeCfg.attnTp}` : ''}
-                    ${decodeCfg.ffnTp ? ` | ffn tp=${decodeCfg.ffnTp}` : ''}
-                    ${decodeCfg.batch ? ` | batch=${decodeCfg.batch}` : ''}
-                    | TPS/gpu=${decodeCfg.tpsPerGpu.toFixed(2)}
-                </span>
+                <span class="result-label">${t['tco-decode-best'] || 'Decode best config (by TPS per GPU)'}</span>
+                <div class="result-value">
+                    <div class="result-tags">
+                        <span class="tag">PP: ${decodeCfg.pp ?? '-'}</span>
+                        <span class="tag">Attn TP: ${decodeCfg.attnTp ?? '-'}</span>
+                        <span class="tag">FFN TP: ${decodeCfg.ffnTp ?? '-'}</span>
+                        <span class="tag">FFN EP: ${decodeCfg.ffnEp ?? '-'}</span>
+                        <span class="tag">Batch: ${decodeCfg.batch ?? '-'}</span>
+                    </div>
+                    <div class="result-metrics">
+                        <span class="metric">TPS/gpu: ${decodeCfg.tpsPerGpu.toFixed(2)}</span>
+                    </div>
+                </div>
             </div>
             ${decodePrice != null ? `
             <div class="result-item">
-                <span class="result-label">${t['tco-decode-price'] || 'Decode 每 1M token 价格:'}</span>
+                <span class="result-label">${t['tco-decode-price'] || 'Decode per 1M token price:'}</span>
                 <span class="result-value">$${decodePrice.toFixed(4)}</span>
             </div>` : ''}
             ` : `<div class="result-item"><span class="result-label">Decode:</span><span class="result-value">${t['tco-decode-none'] || '无满足条件配置'}</span></div>`}
 
             ${prefillCfg ? `
             <div class="result-item">
-                <span class="result-label">${t['tco-prefill-best'] || 'Prefill 最佳配置 (TPS/gpu 且 TPS/request > 20)'}</span>
-                <span class="result-value">
-                    ${prefillCfg.configName || ''}
-                    ${prefillCfg.pp ? ` | pp=${prefillCfg.pp}` : ''}
-                    ${prefillCfg.attnTp ? ` | attn tp=${prefillCfg.attnTp}` : ''}
-                    ${prefillCfg.ffnTp ? ` | ffn tp=${prefillCfg.ffnTp}` : ''}
-                    ${prefillCfg.batch ? ` | batch=${prefillCfg.batch}` : ''}
-                    | TPS/gpu=${prefillCfg.tpsPerGpu.toFixed(2)}
-                    ${prefillCfg.tpsPerUser != null ? ` | TPS/request=${prefillCfg.tpsPerUser.toFixed(2)}` : ''}
-                </span>
+                <span class="result-label">${t['tco-prefill-best'] || 'Prefill best config (by TPS/gpu and TPS/request > 20)'}</span>
+                <div class="result-value">
+                    <div class="result-tags">
+                        <span class="tag">PP: ${prefillCfg.pp ?? '-'}</span>
+                        <span class="tag">Attn TP: ${prefillCfg.attnTp ?? '-'}</span>
+                        <span class="tag">FFN TP: ${prefillCfg.ffnTp ?? '-'}</span>
+                        <span class="tag">FFN EP: ${prefillCfg.ffnEp ?? '-'}</span>
+                        <span class="tag">Batch: ${prefillCfg.batch ?? '-'}</span>
+                    </div>
+                    <div class="result-metrics">
+                        <span class="metric">TPS/gpu: ${prefillCfg.tpsPerGpu.toFixed(2)}</span>
+                        ${prefillCfg.tpsPerUser != null ? `<span class="metric">TPS/request: ${prefillCfg.tpsPerUser.toFixed(2)}</span>` : ''}
+                    </div>
+                </div>
             </div>
             ${prefillPrice != null ? `
             <div class="result-item">
-                <span class="result-label">${t['tco-prefill-price'] || 'Prefill 每 1M token 价格:'}</span>
+                <span class="result-label">${t['tco-prefill-price'] || 'Prefill per 1M token price:'}</span>
                 <span class="result-value">$${prefillPrice.toFixed(4)}</span>
             </div>` : ''}
             ` : `<div class="result-item"><span class="result-label">Prefill:</span><span class="result-value">${t['tco-prefill-none'] || '无满足条件配置 (TPS/request > 20)'}</span></div>`}
