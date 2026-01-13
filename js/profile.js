@@ -189,8 +189,33 @@ async function handleLoadClick() {
 
 // 初始化绑定事件
 window.addEventListener('DOMContentLoaded', () => {
+  // 设置默认选项
+  const gpuSelect = document.getElementById('gpu-select');
+  const modelSelect = document.getElementById('profile-model-select');
+  const gpuNumSelect = document.getElementById('gpu-num-select');
+  const modeSelect = document.getElementById('mode-select');
+  
+  if (gpuSelect) {
+    gpuSelect.value = 'GB200-NVL72';
+  }
+  if (modelSelect) {
+    modelSelect.value = 'Deep-Seekerv3';
+  }
+  if (gpuNumSelect) {
+    gpuNumSelect.value = '144';
+  }
+  if (modeSelect) {
+    modeSelect.value = 'decode';
+  }
+
+  // 绑定加载按钮
   const btn = document.getElementById('load-btn');
   if (btn) {
     btn.addEventListener('click', handleLoadClick);
   }
+
+  // 自动触发一次加载
+  setTimeout(() => {
+    handleLoadClick();
+  }, 300);
 });

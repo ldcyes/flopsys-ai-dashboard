@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FLOPSYS AI</title>
+    <title>Profile - FLOPSYS AI</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="css/styles.css">
@@ -17,7 +17,10 @@
 <body>
     <nav class="navbar">
         <div class="nav-left">
-            <div class="logo" data-lang="logo">Flopsys AI</div>
+            <div class="logo" data-lang="logo">
+                <img src="./data/flopsys_90.png" style="height:32px; width:auto;" />
+                <span>FLOPSYS</span>
+            </div>
             <div class="nav-links">
                 <a href="index.html" class="nav-link" data-lang="performance">performance</a>
                 <a href="tco.html" class="nav-link" data-lang="tco">TCO calculator</a>
@@ -90,10 +93,10 @@
                         </select>
                     </div>
 
-                    <div class="control-group">
-                        <label>&nbsp;</label>
-                        <button class="btn btn-primary" id="load-btn" data-lang="profile-load">Load Chart</button>
-                    </div>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn btn-primary" id="load-btn" data-lang="profile-load">Load chartjs-adapter-date-fns</button>
                 </div>
             </section>
 
@@ -145,5 +148,16 @@
           });
         }
     </script>
+
+    <!-- 页脚版权声明 -->
+    <footer class="footer">
+        <div class="footer-content">
+            <p>⚠️ All data is for reference only | 数据仅供参考</p>
+            <p>All rights reserved and interpretation rights belong to <span class="footer-highlight">FLOPSYS</span></p>
+            <p>所有权和解释权归属 <span class="footer-highlight">FLOPSYS</span></p>
+            <p>© 2026 FLOPSYS. All Rights Reserved.</p>
+        </div>
+    </footer>
+
 </body>
 </html>

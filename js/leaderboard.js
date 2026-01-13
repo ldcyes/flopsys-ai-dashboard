@@ -2,8 +2,24 @@ import { translations, updateLanguage, currentLang } from './i18n.js';
 import { allHardware, hardwareBrands, loadExcelData } from './data.js';
 
 document.addEventListener('DOMContentLoaded', function() {
+    // 设置默认值
+    const modeSelect = document.getElementById('leaderboard-mode-select');
+    const modelSelect = document.getElementById('leaderboard-model-select');
+    
+    if (modeSelect) {
+        modeSelect.value = 'decode';
+    }
+    if (modelSelect) {
+        modelSelect.value = 'Deep-Seekerv3';
+    }
+
     bindEvents();
     updateLanguage(currentLang);
+
+    // 自动触发一次排行榜生成
+    setTimeout(() => {
+        generateRanking();
+    }, 300);
 });
 
 function bindEvents() {
@@ -128,10 +144,6 @@ function displayRankings(rankings) {
             <td class="config-cell">${configParamsText}</td>
             <td class="metric-cell">${item.tpsPerGpu.toFixed(2)}</td>
         `;
-        
-        if (index < 3) {
-            row.classList.add('top-rank');
-        }
         
         tbody.appendChild(row);
     });

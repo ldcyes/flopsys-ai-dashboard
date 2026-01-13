@@ -26,13 +26,24 @@ document.addEventListener('DOMContentLoaded', function() {
     setDefaultSelectValue('tco-input-seq');
     setDefaultSelectValue('tco-output-seq');
 
+    // 特别设置 Output Sequence 默认为 8K
+    const outputSeqSelect = document.getElementById('tco-output-seq');
+    if (outputSeqSelect) {
+        outputSeqSelect.value = '8K';
+    }
+
     bindEvents();
     updateLanguage(currentLang);
     const langSelect = document.getElementById('lang-select');
-if (langSelect) {
-    langSelect.value = currentLang || 'en';
-}
-updateLanguage();
+    if (langSelect) {
+        langSelect.value = currentLang || 'en';
+    }
+    updateLanguage();
+
+    // 自动触发一次TCO计算
+    setTimeout(() => {
+        calculateTCO();
+    }, 300);
 });
 
 function bindEvents() {

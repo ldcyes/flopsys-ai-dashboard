@@ -25,12 +25,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     setDefaultSelectValue('mode-select');
     setDefaultSelectValue('seq-select');
 
-    // 默认选中每组 checkbox 的第一个选项；batch 组默认全选
-    setFirstCheckboxChecked('#hardware-checkboxes');
-    setFirstCheckboxChecked('#attn-tp-group');
-    setFirstCheckboxChecked('#ffn-tp-group');
+    // 所有 checkbox 组默认全选
+    selectAllCheckboxes('#hardware-checkboxes');
+    selectAllCheckboxes('#attn-tp-group');
+    selectAllCheckboxes('#ffn-tp-group');
     //setFirstCheckboxChecked('#pp-group');
     selectAllCheckboxes('#batch-group');
+
+    // 设置 category mode 默认为 GPU Model
+    const categorySelect = document.getElementById('category-key-select');
+    if (categorySelect) {
+        categorySelect.value = 'GPU';
+    }
 
     initChart();
     bindEventListeners();
