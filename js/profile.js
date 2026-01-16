@@ -11,7 +11,9 @@ const STAGE_KEYS = [
   { key: 'Shared Expert', label: 'Shared Expert' },
   { key: 'Routed expert', label: 'Routed expert' },
   { key: 'Combine time', label: 'Combine time' },
-  { key: 'final linear softmax', label: 'Final linear softmax' }
+  { key: 'final linear softmax', label: 'Final linear softmax' },
+  { key: 'MLA all reduce', label: 'MLA all reduce' },
+  { key: 'FFN all reduce', label: 'FFN all reduce' }
 ];
 
 // 与 index.html 风格接近的一组颜色
@@ -23,7 +25,9 @@ const STAGE_COLORS = [
   '#ff6b6b',
   '#4ecdc4',
   '#9365ff',
-  '#ff9ff3'
+  '#ff9ff3',
+  '#978830',
+  '#632451'
 ];
 
 // 根据场景返回文件路径
