@@ -31,9 +31,10 @@ export function initChart() {
                     displayColors: true,
                     callbacks: {
                         label: function(context) {
+                            // axes swapped: x -> TPS per user, y -> TPS per gpu
                             const x = context.parsed.x;
                             const y = context.parsed.y;
-                            return `${context.dataset.label}: TPS per user = ${y.toFixed(2)}, TPS per gpu = ${x.toFixed(2)}`;
+                            return `${context.dataset.label}: TPS per user = ${x.toFixed(2)}, TPS per gpu = ${y.toFixed(2)}`;
                         }
                     }
                 }
@@ -43,7 +44,7 @@ export function initChart() {
                     type: 'linear',
                     title: {
                         display: true,
-                        text: 'TPS per GPU',
+                        text: 'TPS per User',
                         color: '#a0a0c0',
                         font: {
                             size: 14,
@@ -60,7 +61,7 @@ export function initChart() {
                 y: {
                     title: {
                         display: true,
-                        text: 'TPS per User',
+                        text: 'TPS per GPU',
                         color: '#a0a0c0',
                         font: {
                             size: 14,
@@ -164,12 +165,13 @@ export async function loadAndRenderChartFromCSV(filePath, label) {
     console.log('[loadAndRenderChartFromCSV] Loading data from:', filePath);
     const csvData = await loadExcelData(filePath);
 
-    // 从 Excel 中提取 TPS per gpu / TPS per user 列（注意大小写）
+    // 从 Excel 中提取 TPS per user / TPS per gpu 列（注意大小写）
+    // Axes swapped: x = TPS per user, y = TPS per gpu
     const chartDataPoints = csvData
         .filter(row => row['TPS per gpu'] != null && row['TPS per user'] != null)
         .map(row => ({
-            x: Number(row['TPS per gpu']),
-            y: Number(row['TPS per user'])
+            x: Number(row['TPS per user']),
+            y: Number(row['TPS per gpu'])
         }));
 
     const datasetIndex = chartData.datasets.length;
@@ -191,12 +193,12 @@ export async function loadAndRenderChartFromCSV(filePath, label) {
 
 // 从 CSV 绘制：根据过滤条件选行，并按某一列进行分类着色
 export async function plotCsvWithFilters(filePath, filters, categoryKey) {
-    console.log('[plotCsvWithFilters] Loading data from:', filePath);
+    //console.log('[plotCsvWithFilters] Loading data from:', filePath);
     const csvData = await loadExcelData(filePath);
 
-    console.log('[plotCsvWithFilters] total rows in CSV:', csvData.length);
+    //console.log('[plotCsvWithFilters] total rows in CSV:', csvData.length);
     // 1) 按 filters 过滤行（例如 pp、attn tp、ffn ep、attn dp、ffn dp 等）
-    console.log('[plotCsvWithFilters] filters:', filters);
+    //console.log('[plotCsvWithFilters] filters:', filters);
     const filteredRows = csvData.filter(row => {
         return Object.entries(filters).every(([key, value]) => {
             if (value == null || value === '' || (Array.isArray(value) && value.length === 0)) {
@@ -231,10 +233,11 @@ export async function plotCsvWithFilters(filePath, filters, categoryKey) {
     for (const [catVal, rows] of groups.entries()) {
         const points = rows
             .filter(row => row['TPS per gpu'] != null && row['TPS per user'] != null)
-            .map(row => ({
-                x: Number(row['TPS per gpu']),
-                y: Number(row['TPS per user'])
-            }));
+                .map(row => ({
+                    // Axes swapped: x = TPS per user, y = TPS per gpu
+                    x: Number(row['TPS per user']),
+                    y: Number(row['TPS per gpu'])
+                }));
 
         if (points.length === 0) continue;
 

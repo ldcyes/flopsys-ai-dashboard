@@ -247,6 +247,25 @@ body {
     box-shadow: var(--shadow);
 }
 
+/* 硬件配置说明样式 */
+.hardware-notes {
+    margin-top: 16px;
+    background: rgba(30,30,46,0.45);
+    border: 1px solid rgba(255,255,255,0.04);
+    padding: 12px 16px;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.6;
+}
+.hardware-notes ol {
+    margin: 0;
+    padding-left: 20px;
+}
+.hardware-notes li {
+    margin: 6px 0;
+}
+
 .checkbox-group {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));

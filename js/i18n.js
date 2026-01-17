@@ -123,7 +123,13 @@ export const translations = {
         'contact-us': '联系我们',
         'email': 'contact@flopsys-tech.com',
         'website': 'www.flopsys-tech.com',
-        'address': 'Singapore, SG'
+    'address': 'Singapore, SG',
+        // 硬件说明（仅中文）
+        'hardware-note-1': '最低精度为 FP4。',
+        'hardware-note-2': 'LDST（Load/Store）与计算可并行。',
+        'hardware-note-3': '通信与计算可并行。',
+        'hardware-note-4': '若 GPU 不支持 FP4，则计算使用 FP8，但存储使用 FP4。',
+        'hardware-note-5': '在 MLA 模式下，所有 matmul 均可使用 FP6/FP4 精度。'
     },
 
     en: {
@@ -248,7 +254,13 @@ export const translations = {
         'contact-us': 'Contact Us',
         'email': 'contact@flopsys-tech.com',
         'website': 'www.flopsys-tech.com',
-        'address': 'Singapore, SG'
+        'address': 'Singapore, SG',
+        // Hardware notes - English
+        'hardware-note-1': 'Minimum precision is FP4.',
+        'hardware-note-2': 'LDST (Load/Store) can run in parallel with computation.',
+        'hardware-note-3': 'Communication and computation can overlap (run in parallel).',
+        'hardware-note-4': 'GPUs without FP4 support compute using FP8, but storage uses FP4.',
+        'hardware-note-5': 'In MLA mode, all matmuls can use FP6/FP4 precision.'
     },
 
     es: {
@@ -361,7 +373,13 @@ export const translations = {
         'contact-us': 'Contact Us',
         'email': 'contact@flopsys-tech.com',
         'website': 'www.flopsys-tech.com',
-        'address': 'Singapore, SG'
+        'address': 'Singapore, SG',
+        // Notas de hardware - Español
+        'hardware-note-1': 'La precisión mínima es FP4.',
+        'hardware-note-2': 'LDST (Carga/Almacenamiento) puede ejecutarse en paralelo con el cálculo.',
+        'hardware-note-3': 'La comunicación y el cálculo pueden superponerse (ejecutarse en paralelo).',
+        'hardware-note-4': 'Las GPUs que no admiten FP4 calculan en FP8, pero el almacenamiento usa FP4.',
+        'hardware-note-5': 'En modo MLA, todos los matmul pueden usar precisión FP6/FP4.'
     },
 
     fr: {
@@ -474,7 +492,13 @@ export const translations = {
         'contact-us': 'Contact Us',
         'email': 'contact@flopsys-tech.com',
         'website': 'www.flopsys-tech.com',
-        'address': 'Singapore, SG'
+        'address': 'Singapore, SG',
+        // Notes matériel - Français
+        'hardware-note-1': 'La précision minimale est FP4.',
+        'hardware-note-2': 'LDST (Load/Store) peut s\'exécuter en parallèle avec le calcul.',
+        'hardware-note-3': 'La communication et le calcul peuvent se superposer (s\'exécuter en parallèle).',
+        'hardware-note-4': 'Les GPU ne supportant pas FP4 effectuent les calculs en FP8, mais le stockage utilise FP4.',
+        'hardware-note-5': 'En mode MLA, tous les matmul peuvent utiliser la précision FP6/FP4.'
     }
 };
 
