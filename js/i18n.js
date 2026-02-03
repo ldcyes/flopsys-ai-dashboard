@@ -47,6 +47,11 @@ export const translations = {
     'profile-decode': 'decode',
     'profile-prefill': 'prefill',
     'profile-load': '加载图表',
+    'profile-attn-tp': 'Attention TP（多选）',
+    'profile-ffn-tp': 'FFN TP（多选）',
+    'profile-attn-dp': 'Attention DP（多选）',
+    'profile-ffn-dp': 'FFN DP（多选）',
+    'profile-batch': 'Batch Size（多选）',
 
         // TCO 页面
         'tco-title': 'TCO计算',
@@ -179,6 +184,11 @@ export const translations = {
     'profile-decode': 'decode',
     'profile-prefill': 'prefill',
     'profile-load': 'Load Chart',
+    'profile-attn-tp': 'Attention TP (multi-select)',
+    'profile-ffn-tp': 'FFN TP (multi-select)',
+    'profile-attn-dp': 'Attention DP (multi-select)',
+    'profile-ffn-dp': 'FFN DP (multi-select)',
+    'profile-batch': 'Batch Size (multi-select)',
 
         // TCO page
         'tco-title': 'TCO Calculator',
@@ -298,6 +308,24 @@ export const translations = {
         'update': 'Actualizar Gráfico',
         'no-data': 'Sin datos - Por favor seleccione configuración',
 
+    // Página Profile
+    'profile-title': 'Análisis de descomposición de etapas',
+    'profile-subtitle': 'Seleccione GPU, cantidad de tarjetas y escenario (prefill / decode) para ver el gráfico apilado de tiempo por etapa',
+    'profile-config': 'Selección de configuración',
+    'profile-gpu': 'Modelo de GPU',
+    'profile-select-gpu': 'Seleccionar GPU',
+    'profile-gpu-num': 'Cantidad de GPU',
+    'profile-all': 'Todos',
+    'profile-mode': 'Escenario',
+    'profile-decode': 'decode',
+    'profile-prefill': 'prefill',
+    'profile-load': 'Cargar gráfico',
+    'profile-attn-tp': 'Attention TP (multi-selección)',
+    'profile-ffn-tp': 'FFN TP (multi-selección)',
+    'profile-attn-dp': 'Attention DP (multi-selección)',
+    'profile-ffn-dp': 'FFN DP (multi-selección)',
+    'profile-batch': 'Tamaño de batch (multi-selección)',
+
         // Página TCO
         'tco-title': 'Calculadora TCO',
         'tco-subtitle': 'Calcular configuración óptima y costo total',
@@ -416,6 +444,24 @@ export const translations = {
         'reset': 'Réinitialiser la Config',
         'update': 'Mettre à Jour le Graphique',
         'no-data': 'Aucune donnée - Veuillez sélectionner une configuration',
+
+    // Page Profile
+    'profile-title': 'Analyse de décomposition des étapes',
+    'profile-subtitle': 'Sélectionnez le GPU, le nombre de cartes et le scénario (prefill / decode) pour voir l\'histogramme empilé des temps par étape',
+    'profile-config': 'Sélection de configuration',
+    'profile-gpu': 'Modèle de GPU',
+    'profile-select-gpu': 'Sélectionner le GPU',
+    'profile-gpu-num': 'Nombre de GPU',
+    'profile-all': 'Tous',
+    'profile-mode': 'Scénario',
+    'profile-decode': 'decode',
+    'profile-prefill': 'prefill',
+    'profile-load': 'Charger le graphique',
+    'profile-attn-tp': 'Attention TP (multi-sélection)',
+    'profile-ffn-tp': 'FFN TP (multi-sélection)',
+    'profile-attn-dp': 'Attention DP (multi-sélection)',
+    'profile-ffn-dp': 'FFN DP (multi-sélection)',
+    'profile-batch': 'Taille de batch (multi-sélection)',
 
         // Page TCO
         'tco-title': 'Calculateur TCO',

@@ -28,13 +28,26 @@ export function initChart() {
                     borderWidth: 1,
                     padding: 12,
                     cornerRadius: 8,
-                    displayColors: true,
+                    displayColors: false,
                     callbacks: {
                         label: function(context) {
-                            // axes swapped: x -> TPS per user, y -> TPS per gpu
-                            const x = context.parsed.x;
-                            const y = context.parsed.y;
-                            return `${context.dataset.label}: TPS per user = ${x.toFixed(2)}, TPS per gpu = ${y.toFixed(2)}`;
+                            const point = context.raw || {};
+                            const tpsPerUser = Number.isFinite(point.x) ? point.x : context.parsed.x;
+                            const tpsPerGpu = Number.isFinite(point.y) ? point.y : context.parsed.y;
+                            const gpu = point.gpu ?? 'N/A';
+                            const batch = point.batch ?? 'N/A';
+                            const attnTP = point.attnTP ?? 'N/A';
+                            const ffnTP = point.ffnTP ?? 'N/A';
+                            const attnDP = point.attnDP ?? 'N/A';
+                            const ffnDP = point.ffnDP ?? 'N/A';
+
+                            return [
+                                `TPS (user/gpu): ${tpsPerUser.toFixed(2)} / ${tpsPerGpu.toFixed(2)}`,
+                                `GPU: ${gpu}`,
+                                `Batch: ${batch}`,
+                                `TP: Attn ${attnTP}, FFN ${ffnTP}`,
+                                `DP: Attn ${attnDP}, FFN ${ffnDP}`
+                            ];
                         }
                     }
                 }
@@ -77,8 +90,8 @@ export function initChart() {
                 }
             },
             interaction: {
-                mode: 'index',
-                intersect: false
+                mode: 'nearest',
+                intersect: true
             },
             elements: {
                 line: {
@@ -171,7 +184,13 @@ export async function loadAndRenderChartFromCSV(filePath, label) {
         .filter(row => row['TPS per gpu'] != null && row['TPS per user'] != null)
         .map(row => ({
             x: Number(row['TPS per user']),
-            y: Number(row['TPS per gpu'])
+            y: Number(row['TPS per gpu']),
+            gpu: row['GPU'] ?? row['Gpu'] ?? row['gpu'] ?? null,
+            batch: row['Batch'] ?? row['batch'] ?? null,
+            attnTP: row['attn tp'] ?? row['attnTP'] ?? null,
+            ffnTP: row['ffn tp'] ?? row['ffnTP'] ?? null,
+            attnDP: row['attn dp'] ?? row['attnDP'] ?? null,
+            ffnDP: row['ffn dp'] ?? row['ffnDP'] ?? null
         }));
 
     const datasetIndex = chartData.datasets.length;
@@ -236,7 +255,13 @@ export async function plotCsvWithFilters(filePath, filters, categoryKey) {
                 .map(row => ({
                     // Axes swapped: x = TPS per user, y = TPS per gpu
                     x: Number(row['TPS per user']),
-                    y: Number(row['TPS per gpu'])
+                    y: Number(row['TPS per gpu']),
+                    gpu: row['GPU'] ?? row['Gpu'] ?? row['gpu'] ?? null,
+                    batch: row['Batch'] ?? row['batch'] ?? null,
+                    attnTP: row['attn tp'] ?? row['attnTP'] ?? null,
+                    ffnTP: row['ffn tp'] ?? row['ffnTP'] ?? null,
+                    attnDP: row['attn dp'] ?? row['attnDP'] ?? null,
+                    ffnDP: row['ffn dp'] ?? row['ffnDP'] ?? null
                 }));
 
         if (points.length === 0) continue;

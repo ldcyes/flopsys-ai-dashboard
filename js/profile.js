@@ -1,6 +1,9 @@
 // profile.js - 从 decode_all.xlsx / prefill_all.xlsx 加载阶段耗时并画堆积柱状图
+import { tpOptions } from './data.js';
 
 let stageChart = null;
+
+const profileBatchOptions = [16, 32, 64, 128, 256, 384];
 
 // 8 个阶段列名，与表头严格一致
 const STAGE_KEYS = [
@@ -60,6 +63,9 @@ function filterRows(rows) {
   const model = document.getElementById('profile-model-select')?.value; // 列名 model
   const gpu = document.getElementById('gpu-select').value; // 列名 GPU
   const gpuNum = document.getElementById('gpu-num-select').value; // 列名 Gpu num
+  const attnTP = getSelectedValues('profile-attn-tp');
+  const ffnTP = getSelectedValues('profile-ffn-tp');
+  const batch = getSelectedValues('profile-batch');
 
   return rows.filter(row => {
     if (model && String(row['model']).trim() !== String(model).trim()) {
@@ -71,7 +77,72 @@ function filterRows(rows) {
     if (gpuNum && String(row['Gpu num']).trim() !== String(gpuNum).trim()) {
       return false;
     }
+    if (attnTP.length && !attnTP.includes(String(row['attn tp']).trim())) {
+      return false;
+    }
+    if (ffnTP.length && !ffnTP.includes(String(row['ffn tp']).trim())) {
+      return false;
+    }
+    if (batch.length && !batch.includes(String(row['Batch']).trim())) {
+      return false;
+    }
     return true;
+  });
+}
+
+function getSelectedValues(prefix) {
+  const checkboxes = document.querySelectorAll(`#${prefix}-group input[type="checkbox"]:checked`);
+  return Array.from(checkboxes).map(cb => cb.value);
+}
+
+function selectAllCheckboxes(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = true;
+  });
+}
+
+function generateProfileTPCheckboxes() {
+  const attnContainer = document.getElementById('profile-attn-tp-group');
+  const ffnContainer = document.getElementById('profile-ffn-tp-group');
+  if (!attnContainer || !ffnContainer) return;
+  attnContainer.innerHTML = '';
+  ffnContainer.innerHTML = '';
+
+  tpOptions[0].values.forEach(value => {
+    const num = value.replace('TP', '');
+    attnContainer.innerHTML += `
+      <div class="checkbox-item">
+        <input type="checkbox" id="profile-attn-tp-${num}" value="${num}">
+        <label for="profile-attn-tp-${num}">${value}</label>
+      </div>
+    `;
+  });
+
+  tpOptions[1].values.forEach(value => {
+    const num = value.replace('TP', '');
+    ffnContainer.innerHTML += `
+      <div class="checkbox-item">
+        <input type="checkbox" id="profile-ffn-tp-${num}" value="${num}">
+        <label for="profile-ffn-tp-${num}">${value}</label>
+      </div>
+    `;
+  });
+}
+
+function generateProfileBatchCheckboxes() {
+  const container = document.getElementById('profile-batch-group');
+  if (!container) return;
+  container.innerHTML = '';
+
+  profileBatchOptions.forEach(value => {
+    container.innerHTML += `
+      <div class="checkbox-item">
+        <input type="checkbox" id="profile-batch-${value}" value="${value}">
+        <label for="profile-batch-${value}">${value}</label>
+      </div>
+    `;
   });
 }
 
@@ -136,6 +207,21 @@ function renderStageChart(chartData) {
               return `${context.dataset.label}: ${val.toFixed(4)}`;
             }
           }
+        },
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: 'x'
+          },
+          zoom: {
+            wheel: {
+              enabled: true
+            },
+            pinch: {
+              enabled: true
+            },
+            mode: 'x'
+          }
         }
       },
       scales: {
@@ -193,6 +279,13 @@ async function handleLoadClick() {
 
 // 初始化绑定事件
 window.addEventListener('DOMContentLoaded', () => {
+  generateProfileTPCheckboxes();
+  generateProfileBatchCheckboxes();
+
+  selectAllCheckboxes('profile-attn-tp-group');
+  selectAllCheckboxes('profile-ffn-tp-group');
+  selectAllCheckboxes('profile-batch-group');
+
   // 设置默认选项
   const gpuSelect = document.getElementById('gpu-select');
   const modelSelect = document.getElementById('profile-model-select');
@@ -217,6 +310,32 @@ window.addEventListener('DOMContentLoaded', () => {
   if (btn) {
     btn.addEventListener('click', handleLoadClick);
   }
+
+  // 控件变化后自动刷新
+  const autoRefreshIds = [
+    'gpu-select',
+    'profile-model-select',
+    'gpu-num-select',
+    'mode-select'
+  ];
+  autoRefreshIds.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', handleLoadClick);
+    }
+  });
+
+  const checkboxGroups = [
+    'profile-attn-tp-group',
+    'profile-ffn-tp-group',
+    'profile-batch-group'
+  ];
+  checkboxGroups.forEach(id => {
+    const group = document.getElementById(id);
+    if (group) {
+      group.addEventListener('change', handleLoadClick);
+    }
+  });
 
   // 自动触发一次加载
   setTimeout(() => {
