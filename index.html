@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM performance - Flopsys AI</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <!-- Main navigation -->
+    <nav class="navbar">
+        <div class="nav-left">
+            <div class="logo" data-lang="logo">Flopsys AI</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link active" data-lang="performance">Overview</a>
+                <a href="leaderboard.html" class="nav-link" data-lang="leaderboard">Hardware Ranking</a>
+                <a href="tco.html" class="nav-link" data-lang="tco">TCO</a>
+                <a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a>
+                <a href="author.html" class="nav-link">Author</a>
+            </div>
+        </div>
+        <div class="nav-right">
+            <select class="lang-select" id="lang-select">
+                <option value="zh">🇨🇳 中文</option>
+                <option value="en" selected>🇺🇸 English</option>
+                <option value="es">🇪🇸 Español</option>
+                <option value="fr">🇫🇷 Français</option>
+            </select>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header">
+            <h1 data-lang="title">LLM performance</h1>
+            <p data-lang="subtitle">From model-layer inputs to hardware-aware operator, communication, capacity, strategy, and deployment analysis.</p>
+            <p class="member-bio author-bio"><a href="author.html">Author: liangdacheng</a>, architecture. Previously worked for AMD, S3, Enflame, Biren, Xring, and UNISOC.</p>
+        </div>
+
+        <div class="main-content">
+            <section class="strategy-pareto-section" id="strategy-pareto-section">
+                <div class="section-title" data-lang="hardware-config">Hardware and Parallel Strategy Sweep</div>
+                <div class="strategy-control-shell">
+                    <div class="strategy-control-block strategy-filter-panel">
+                        <div class="strategy-control-heading">Search space</div>
+                        <div class="strategy-control-grid strategy-filter-grid">
+                            <div class="control-group strategy-model-control">
+                                <label for="model-select">Model</label>
+                                <select id="model-select"></select>
+                            </div>
+                            <div class="control-group strategy-sequence-control">
+                                <label for="seq-select">Sequence</label>
+                                <select id="seq-select"></select>
+                            </div>
+                            <div class="control-group strategy-gpu-model-control">
+                                <label>GPU model</label>
+                                <div class="checkbox-group" id="strategy-hardware-group"></div>
+                            </div>
+                            <div class="control-group strategy-gpu-count-control">
+                                <label>GPU count</label>
+                                <div class="checkbox-group" id="strategy-gpu-num-group"></div>
+                            </div>
+                            <div class="strategy-type-stage-row">
+                                <div class="control-group strategy-type-control">
+                                    <label>Strategy features</label>
+                                    <div class="checkbox-group" id="strategy-type-group"></div>
+                                </div>
+                                <div class="control-group strategy-stage-control" id="strategy-stage-control">
+                                    <label>MTP stage</label>
+                                    <div class="slider-control compact-slider">
+                                        <input type="range" class="range-slider" id="strategy-stage-slider" min="0" max="9" step="1" value="0">
+                                        <div class="slider-meta">stage <span id="strategy-stage-value">0</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="strategy-control-block strategy-parallel-panel">
+                        <div class="strategy-control-heading">Parallel knobs</div>
+                        <div class="strategy-control-grid strategy-parallel-grid">
+                            <div class="control-group">
+                                <label data-lang="attn-tp">Attention TP</label>
+                                <div class="checkbox-group" id="attn-tp-group"></div>
+                            </div>
+                            <div class="control-group">
+                                <label>Attention CP</label>
+                                <div class="slider-control compact-slider">
+                                    <input type="range" class="range-slider" id="attn-cp-slider" min="0" max="3" step="1" value="0">
+                                    <div class="slider-meta">CP <span id="attn-cp-value">1</span></div>
+                                </div>
+                            </div>
+                            <div class="control-group">
+                                <label data-lang="ffn-tp">FFN TP</label>
+                                <div class="checkbox-group" id="ffn-tp-group"></div>
+                            </div>
+                            <div class="control-group">
+                                <label data-lang="pp">Pipeline PP</label>
+                                <div class="checkbox-group" id="pp-group"></div>
+                            </div>
+                            <div class="control-group">
+                                <label data-lang="batch-size">Batch size</label>
+                                <div class="slider-control">
+                                    <input type="range" class="range-slider" id="batch-slider" min="0" max="0" step="1" value="0">
+                                    <div class="slider-meta">batch <span id="batch-value">-</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="strategy-control-block strategy-display-options">
+                        <div class="strategy-control-heading">Chart display</div>
+                        <div class="checkbox-group checkbox-group-compact">
+                            <div class="segmented-control strategy-color-mode" aria-label="Chart color mode">
+                                <label>
+                                    <input type="radio" name="strategy-color-mode" value="hardware">
+                                    <span>GPU color</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="strategy-color-mode" value="strategy" checked>
+                                    <span>Strategy color</span>
+                                </label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="strategy-labels-toggle">
+                                <label for="strategy-labels-toggle">Show labels</label>
+                            </div>
+                            <div class="checkbox-item">
+                                <input type="checkbox" id="strategy-only-frontier-toggle">
+                                <label for="strategy-only-frontier-toggle">Only Pareto points</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="button-group strategy-sweep-actions">
+                    <button class="btn btn-secondary" id="reset-btn" data-lang="reset">Reset</button>
+                    <button class="btn btn-primary" id="update-btn" data-lang="update">Update</button>
+                </div>
+
+                <div class="strategy-pareto-layout">
+                    <div class="strategy-chart-frame">
+                        <svg id="strategy-pareto-chart" role="img" aria-label="Strategy throughput versus TPS Pareto chart"></svg>
+                        <div class="strategy-tooltip" id="strategy-chart-tooltip"></div>
+                    </div>
+                    <div class="strategy-point-detail" id="strategy-point-detail">
+                        <div class="section-title">Selected point details</div>
+                        <p class="member-bio">Click a point on the chart to inspect operator time and bottleneck details.</p>
+                    </div>
+                    <div class="strategy-frontier-panel">
+                        <div class="section-title">Pareto frontier transitions</div>
+                        <div class="strategy-table-wrap">
+                            <table class="leaderboard-table strategy-frontier-table">
+                                <thead>
+                                    <tr>
+                                        <th>GPU</th>
+                                        <th>Strategy</th>
+                                        <th>TPS/user</th>
+                                        <th>Total TPS</th>
+                                        <th>Batch</th>
+                                        <th>Parallel</th>
+                                        <th>Change from previous point</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="strategy-frontier-table"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <p class="member-bio" id="strategy-pareto-note"></p>
+            </section>
+        </div>
+    </div>
+
+    <script type="module" src="js/site-context.js"></script>
+    <script type="module" src="js/i18n.js"></script>
+    <script type="module" src="js/data.js"></script>
+    <script type="module" src="js/main.js?v=20260623-tiered-strategy-frontiers"></script>
+
+</body>
+</html>

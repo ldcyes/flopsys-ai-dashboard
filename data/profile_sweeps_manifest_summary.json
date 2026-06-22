@@ -1,0 +1,19 @@
+{
+  "page_json_sync": {
+    "copied_page_jsons": 0,
+    "empty_source_payloads": [],
+    "extra_web_page_jsons_after": [],
+    "invalid_source_payloads": [],
+    "missing_web_page_jsons_after": [],
+    "removed_extra_page_jsons": 0,
+    "schema_version": "profile-sweeps-page-json-sync-v1",
+    "source_case_dirs": 1466,
+    "source_page_jsons": 2932,
+    "unchanged_page_jsons": 2932,
+    "updated_page_jsons": 0,
+    "web_case_dirs_after": 1466,
+    "web_case_dirs_before": 1466,
+    "web_page_jsons_after": 2932,
+    "web_page_jsons_before": 2932
+  }
+}

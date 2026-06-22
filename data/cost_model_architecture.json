@@ -1,0 +1,1878 @@
+{
+  "metadata": {
+    "title": "LLMPerf Cost Model Architecture",
+    "subtitle": "An interactive map of workload, hardware, operator, communication, memory, search, and scenario analyses.",
+    "version": "2026-05-16",
+    "codeRoots": [
+      "llm_perf/core",
+      "llm_perf/kernels",
+      "llm_perf/comm",
+      "scripts",
+      "web"
+    ],
+    "paperDraft": "docs/cost_model_architecture_arxiv.tex",
+    "paperTitle": "LLMPerf Cost Model Architecture: A Hardware-Aware Analytical Framework for Large Language Model Inference",
+    "objective": "Rapid, explainable design-space exploration for LLM inference architecture, model-system co-design, and deployment planning.",
+    "scope": "Analytical estimates for workload structure, hardware abstraction, operator timing, communication, memory capacity, strategy search, scenario studies, outputs, and model limits.",
+    "recommendedWorkflow": "Use the model to narrow a large architecture space, validate selected points with kernel and communication benchmarks, then feed calibration back into hardware tables and transport constants."
+  },
+  "audiences": [
+    {
+      "id": "architecture",
+      "label": "Architecture / Hardware",
+      "summary": "Hardware abstraction, NoC traffic, memory capacity, and multi-GPU mapping."
+    },
+    {
+      "id": "model",
+      "label": "Model / Algorithm",
+      "summary": "Workload structure, attention, MoE, MTP, KV cache, and phase behavior."
+    },
+    {
+      "id": "business",
+      "label": "Business / Planning",
+      "summary": "Throughput, latency, Pareto choices, capacity planning, and bottleneck explanations."
+    },
+    {
+      "id": "paper",
+      "label": "Paper / External",
+      "summary": "Methodology, assumptions, analysis scope, and limitations suitable for a paper narrative."
+    }
+  ],
+  "architectureFlow": [
+    {
+      "id": "workload",
+      "title": "Workload Inputs",
+      "summary": "Model layers, phase, sequence lengths, precision, batch, and model configuration.",
+      "modules": [
+        "llm_perf/core/cost_model.py",
+        "llm_perf/core/model.py",
+        "llm_perf/core/llm_graph.py"
+      ]
+    },
+    {
+      "id": "hardware",
+      "title": "Hardware Abstraction",
+      "summary": "GPU topology, compute tiles, bandwidths, latencies, capacities, and system maps.",
+      "modules": [
+        "llm_perf/core/hardware_gpu.py",
+        "llm_perf/core/gpu_work_map.py",
+        "data/gpu_info.xlsx"
+      ]
+    },
+    {
+      "id": "operators",
+      "title": "Operator Models",
+      "summary": "GEMM, MHA, softmax, vector, and depthwise kernels modeled at SM/GPU granularity.",
+      "modules": [
+        "llm_perf/kernels/gemm.py",
+        "llm_perf/kernels/mha.py",
+        "llm_perf/kernels/softmax.py",
+        "llm_perf/kernels/vector.py"
+      ]
+    },
+    {
+      "id": "communication",
+      "title": "Communication and NoC",
+      "summary": "TP, EP, PP, CP communication plus on-chip traffic through SM/GPC/L2/HBM/link paths.",
+      "modules": [
+        "llm_perf/comm/comm_cost.py",
+        "llm_perf/comm/noc.py",
+        "llm_perf/comm/comm_units.py"
+      ]
+    },
+    {
+      "id": "capacity",
+      "title": "Memory and Batch",
+      "summary": "HBM budget, KV cache, expert weights, MLA weights, tile fit, and max batch estimates.",
+      "modules": [
+        "llm_perf/core/cost_model.py",
+        "llm_perf/core/global_config.py"
+      ]
+    },
+    {
+      "id": "sweep",
+      "title": "Search and Scenarios",
+      "summary": "GPU count, PP/DP/TP/EP/CP, batch, MTP, PD, and Decode Attention/FFN separation sweeps.",
+      "modules": [
+        "scripts/plot_throughput_tps.py",
+        "scripts/plot_disaggregation.py"
+      ]
+    },
+    {
+      "id": "outputs",
+      "title": "Outputs and Visualization",
+      "summary": "Excel details, CSV/JSON summaries, Pareto fronts, stage plots, and web dashboards.",
+      "modules": [
+        "llm_perf/tools/get_final_res.py",
+        "web/pareto.html",
+        "web/profile.html"
+      ]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "prefill",
+      "title": "Prefill",
+      "description": "High token parallelism dominated by long prompt attention, FFN throughput, and prompt-stage communication.",
+      "tags": [
+        "prefill",
+        "throughput",
+        "attention",
+        "memory"
+      ]
+    },
+    {
+      "id": "decode",
+      "title": "Decode",
+      "description": "Single-token or small-token generation dominated by KV cache traffic, MoE dispatch/combine, and GPU utilization.",
+      "tags": [
+        "decode",
+        "kv-cache",
+        "latency",
+        "moe"
+      ]
+    },
+    {
+      "id": "mtp",
+      "title": "EAGLE MTP",
+      "description": "Speculative multi-token decode analysis with accept-rate and draft-path overhead.",
+      "tags": [
+        "decode",
+        "mtp",
+        "speculative-decoding",
+        "pareto"
+      ]
+    },
+    {
+      "id": "pd",
+      "title": "Prefill/Decode Disaggregation",
+      "description": "Separate prefill and decode hardware pools, transfer KV cache, and estimate system bottleneck stage.",
+      "tags": [
+        "pd",
+        "transfer",
+        "system-throughput",
+        "network"
+      ]
+    },
+    {
+      "id": "decode-af",
+      "title": "Decode Attention/FFN Separation",
+      "description": "Split decode attention and FFN work across hardware pools and account for activation transfer overhead.",
+      "tags": [
+        "decode-af",
+        "decode",
+        "transfer",
+        "network"
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "id": "overview",
+      "title": "Cost Model Overall Architecture",
+      "summary": "The cost model is organized as a pipeline from model-layer inputs to hardware-aware operator estimates, communication estimates, capacity checks, strategy sweeps, and web-ready outputs.",
+      "tags": [
+        "architecture",
+        "pipeline",
+        "method"
+      ],
+      "audiences": [
+        "architecture",
+        "model",
+        "business",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/core/cost_model.py",
+        "docs/index.html"
+      ],
+      "analysisPoints": [
+        {
+          "name": "End-to-end cost pipeline",
+          "what": "Trace how a workbook or graph layer table becomes per-layer timing, summary rows, and visualization data.",
+          "inputs": [
+            "LLM layer table",
+            "ModelArgs",
+            "GlobalConfig",
+            "hardware_gpu"
+          ],
+          "outputs": [
+            "per-layer timing",
+            "summary timing",
+            "TPS",
+            "Excel result"
+          ],
+          "code": [
+            "full_nn_process",
+            "single_op_process",
+            "summarize_llm_timing"
+          ],
+          "paperNote": "This is the paper's main abstraction: model-layer tables and hardware specs become explainable timing, capacity, search, and visualization outputs.",
+          "formulaRefs": [
+            "total-throughput"
+          ]
+        },
+        {
+          "name": "Layer-to-kernel dispatch",
+          "what": "Classify layer types and dispatch them to GEMM, MHA, Softmax, Vector, or Depthwise estimators.",
+          "inputs": [
+            "type",
+            "op layout",
+            "precision",
+            "shape columns"
+          ],
+          "outputs": [
+            "operator-specific timing fields",
+            "traffic fields"
+          ],
+          "code": [
+            "single_op_process",
+            "layer_paser"
+          ],
+          "paperNote": "The paper treats operator dispatch as the boundary between model topology and kernel-level cost formulas."
+        },
+        {
+          "name": "Phase-level aggregation",
+          "what": "Aggregate dense/sparse layer schedules, communication, and optional MTP paths into model-level latency and throughput.",
+          "inputs": [
+            "per-layer op time",
+            "comm time",
+            "is_decode",
+            "MTP settings"
+          ],
+          "outputs": [
+            "TPOT",
+            "TPS per user",
+            "TPS per GPU",
+            "compute/comm split"
+          ],
+          "code": [
+            "summarize_llm_timing"
+          ],
+          "paperNote": "Aggregation is where dense/sparse layer costs, communication, and optional MTP paths become user-facing TPOT and throughput.",
+          "formulaRefs": [
+            "total-throughput"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "inputs",
+      "title": "Input Parameters and Modeled Objects",
+      "summary": "Inputs cover model topology, layer shapes, token lengths, precision, phase, MoE parameters, MTP controls, and disaggregated deployment options.",
+      "tags": [
+        "input",
+        "workload",
+        "model",
+        "moe",
+        "precision"
+      ],
+      "audiences": [
+        "model",
+        "architecture",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/core/cost_model.py",
+        "llm_perf/core/model.py",
+        "llm_perf/core/llm_graph.py",
+        "data/LLM*.xlsx"
+      ],
+      "analysisPoints": [
+        {
+          "name": "Layer schema coverage",
+          "what": "Analyze each layer row using NN name, type, token, c_in/c_out, heads, experts, layout, precision, and parallel hints.",
+          "inputs": [
+            "LLM_LAYER_COLUMNS"
+          ],
+          "outputs": [
+            "normalized layer parser tuple"
+          ],
+          "code": [
+            "LLM_LAYER_COLUMNS",
+            "layer_paser"
+          ],
+          "paperNote": "Covered by the paper's Input Parameters and Modeled Objects section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Prefill and decode phase split",
+          "what": "Model prompt processing and generation separately because sequence shape, KV traffic, and throughput formulas differ.",
+          "inputs": [
+            "phase",
+            "input_seq_length",
+            "output_seq_length",
+            "is_decode"
+          ],
+          "outputs": [
+            "prefill workbook",
+            "decode workbook",
+            "phase-specific summary"
+          ],
+          "code": [
+            "read_llm_layer_table",
+            "full_nn_process"
+          ],
+          "paperNote": "The paper explicitly separates prefill and decode because prompt parallelism and generation KV pressure have different bottlenecks."
+        },
+        {
+          "name": "MoE workload structure",
+          "what": "Capture shared experts, routed experts, top-k, dense layers, sparse layers, and EP communication behavior.",
+          "inputs": [
+            "expert",
+            "topk",
+            "n_shared_experts",
+            "n_routed_experts",
+            "n_dense_layers",
+            "n_layers"
+          ],
+          "outputs": [
+            "dispatch time",
+            "routed expert time",
+            "shared expert time",
+            "combine time"
+          ],
+          "code": [
+            "summarize_llm_timing",
+            "gpu_nmk_shape"
+          ],
+          "paperNote": "Covered by the paper's Input Parameters and Modeled Objects section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Precision and byte-width analysis",
+          "what": "Vary activation, weight, output, and KV cache bytes for fp16/fp8/fp4-style analyses.",
+          "inputs": [
+            "precision",
+            "a_bpe",
+            "b_bpe",
+            "o_bpe",
+            "kv_cache_bpe",
+            "weight_bpe"
+          ],
+          "outputs": [
+            "compute tile selection",
+            "traffic bytes",
+            "memory footprint"
+          ],
+          "code": [
+            "layer_paser",
+            "sm_gemm",
+            "sm_mha"
+          ],
+          "paperNote": "Covered by the paper's Input Parameters and Modeled Objects section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Graph-derived model input",
+          "what": "Generate LLMPerf layer tables from Hugging Face or graph metadata for models not authored directly in Excel.",
+          "inputs": [
+            "Transformers config",
+            "LLM graph JSON"
+          ],
+          "outputs": [
+            "prefill layer dataframe",
+            "decode layer dataframe"
+          ],
+          "code": [
+            "llm_perf/core/llm_graph.py",
+            "llm_perf/tools/hf_to_llmperf_graph.py"
+          ],
+          "paperNote": "Covered by the paper's Input Parameters and Modeled Objects section as part of the cost-model analysis surface."
+        }
+      ]
+    },
+    {
+      "id": "hardware",
+      "title": "Hardware Abstraction Layer",
+      "summary": "The hardware model maps GPU databases into topology, compute, storage, and link parameters used by operator and communication models.",
+      "tags": [
+        "hardware",
+        "gpu",
+        "topology",
+        "bandwidth",
+        "latency"
+      ],
+      "audiences": [
+        "architecture",
+        "business",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/core/hardware_gpu.py",
+        "llm_perf/core/gpu_work_map.py",
+        "data/gpu_info.xlsx"
+      ],
+      "analysisPoints": [
+        {
+          "name": "GPU family comparison",
+          "what": "Compare NVIDIA, AMD, and other accelerators using a unified row-based hardware table.",
+          "inputs": [
+            "gpu_info.xlsx",
+            "hw_name_list",
+            "gpu_num_list"
+          ],
+          "outputs": [
+            "hardware_gpu instances",
+            "system work maps"
+          ],
+          "code": [
+            "hw_inst_from_gpu_info",
+            "load_gpu_info_table"
+          ],
+          "paperNote": "Hardware rows make what-if analysis possible across H100, H200, B200, B300, R200, R300, and other table-backed devices."
+        },
+        {
+          "name": "Compute unit abstraction",
+          "what": "Model tensor-core tile sizes, vector lanes, SFU lanes, frequency, and effective SM count.",
+          "inputs": [
+            "gemm_m/n/k_fp16",
+            "gemm_m/n/k_fp8",
+            "vector_num",
+            "sfu_num",
+            "sm_freq"
+          ],
+          "outputs": [
+            "compute cycles",
+            "peak utilization context"
+          ],
+          "code": [
+            "hardware_gpu.__init__",
+            "sm_gemm",
+            "sm_softmax"
+          ],
+          "paperNote": "Covered by the paper's Hardware Abstraction Layer section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Memory hierarchy abstraction",
+          "what": "Track RF, shared memory, TMEM, L2, and HBM capacities and bandwidths.",
+          "inputs": [
+            "rf_size",
+            "shm_size",
+            "tmem_size",
+            "l2_group_size",
+            "hbm_size",
+            "bandwidth rows"
+          ],
+          "outputs": [
+            "tile fit checks",
+            "traffic time",
+            "memory budget"
+          ],
+          "code": [
+            "hardware_gpu.__init__",
+            "sm_gemm",
+            "hw_noc_run"
+          ],
+          "paperNote": "Covered by the paper's Hardware Abstraction Layer section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Topology abstraction",
+          "what": "Represent die, partition, GPC, SM, L2 group, HBM section, link, and D2D topology.",
+          "inputs": [
+            "die_num",
+            "par_num_die",
+            "gpc_num_par",
+            "gpc_sm_num",
+            "l2_group_num_par"
+          ],
+          "outputs": [
+            "GPU work map",
+            "NoC traffic routing"
+          ],
+          "code": [
+            "GPUWorkMapper",
+            "hw_noc_run"
+          ],
+          "paperNote": "Covered by the paper's Hardware Abstraction Layer section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Interconnect abstraction",
+          "what": "Model P2P, PCIe, NIC, D2D, and intra-node or inter-node transport latency and bandwidth.",
+          "inputs": [
+            "p2p_bw",
+            "pcie_bw",
+            "nic_bw",
+            "d2d_bw",
+            "latency rows"
+          ],
+          "outputs": [
+            "communication time",
+            "PD transfer time",
+            "decode A/F transfer time"
+          ],
+          "code": [
+            "comm_units.py",
+            "disaggregated_inference.py"
+          ],
+          "paperNote": "Covered by the paper's Hardware Abstraction Layer section as part of the cost-model analysis surface."
+        }
+      ]
+    },
+    {
+      "id": "operator",
+      "title": "Operator-Level Modeling",
+      "summary": "Operator models estimate compute time, memory traffic, tile choices, and bottlenecks for core transformer kernels.",
+      "tags": [
+        "operator",
+        "gemm",
+        "mha",
+        "softmax",
+        "vector",
+        "depthwise"
+      ],
+      "audiences": [
+        "architecture",
+        "model",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/kernels/gemm.py",
+        "llm_perf/kernels/mha.py",
+        "llm_perf/kernels/softmax.py",
+        "llm_perf/kernels/vector.py",
+        "llm_perf/kernels/depthwise.py"
+      ],
+      "analysisPoints": [
+        {
+          "name": "GEMM M/N/K/E mapping",
+          "what": "Convert Conv/GEMM/MatMul rows into GPU-local and SM-local M/N/K/E work shapes.",
+          "inputs": [
+            "batch",
+            "h/w",
+            "c_in/c_out",
+            "expert",
+            "topk",
+            "TP/DP/EP"
+          ],
+          "outputs": [
+            "gpu_m/n/k/e",
+            "sm_m/n/k",
+            "tp split reminder"
+          ],
+          "code": [
+            "conv_gemm_shape",
+            "gpu_nmk_shape",
+            "sm_gemm"
+          ],
+          "paperNote": "Covered by the paper's Operator-Level Modeling section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "GEMM tile and loop-order search",
+          "what": "Search legal SM tile shapes and loop orders to estimate compute and memory reload traffic.",
+          "inputs": [
+            "sm_m",
+            "sm_n",
+            "sm_k",
+            "RF/SMEM/TMEM",
+            "precision tile"
+          ],
+          "outputs": [
+            "m_t/n_t/k_t",
+            "gemm_loop_order",
+            "raw traffic bytes",
+            "op time"
+          ],
+          "code": [
+            "sm_gemm",
+            "_rank_tile_candidates"
+          ],
+          "paperNote": "The paper highlights tile legality, reload traffic, and loop order as the explainable layer below model-level timing."
+        },
+        {
+          "name": "MHA and Flash Attention analysis",
+          "what": "Estimate QK, softmax auxiliary work, SV, KV load, and output traffic for flash and non-flash attention.",
+          "inputs": [
+            "q_seq",
+            "kv_seq",
+            "q_head",
+            "kv_head",
+            "hidden",
+            "is_mla",
+            "cp"
+          ],
+          "outputs": [
+            "gemm time",
+            "simt time",
+            "sfu time",
+            "kv load time",
+            "op time"
+          ],
+          "code": [
+            "sm_mha",
+            "flash_attention_aux_ops"
+          ],
+          "paperNote": "Attention analysis separates QK, softmax, SV, KV load, and CP effects so long-context bottlenecks remain inspectable."
+        },
+        {
+          "name": "Softmax SIMT/SFU analysis",
+          "what": "Estimate score-matrix max/sum/scale passes and SFU exp pressure for flash and non-flash softmax.",
+          "inputs": [
+            "sm_q_seq",
+            "sm_kv_seq",
+            "sm_head",
+            "sm_batch",
+            "vector_num",
+            "sfu_num"
+          ],
+          "outputs": [
+            "softmax score elements",
+            "simt time",
+            "sfu time",
+            "traffic bytes"
+          ],
+          "code": [
+            "sm_softmax"
+          ],
+          "paperNote": "Covered by the paper's Operator-Level Modeling section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Vector and normalization analysis",
+          "what": "Estimate vector-style operators such as RMSNorm, RoPE, and elementwise transforms.",
+          "inputs": [
+            "vector op type",
+            "token count",
+            "hidden size",
+            "bpe"
+          ],
+          "outputs": [
+            "vector op time",
+            "L2 sync impact"
+          ],
+          "code": [
+            "sm_vector",
+            "vector_cost.py"
+          ],
+          "paperNote": "Covered by the paper's Operator-Level Modeling section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Depthwise convolution analysis",
+          "what": "Estimate depthwise convolution cost separately from dense GEMM-style convolution.",
+          "inputs": [
+            "group",
+            "c_in",
+            "c_out",
+            "kh/kw",
+            "h/w"
+          ],
+          "outputs": [
+            "depthwise SIMT time",
+            "depthwise traffic"
+          ],
+          "code": [
+            "estimate_depthwise_simt"
+          ],
+          "paperNote": "Covered by the paper's Operator-Level Modeling section as part of the cost-model analysis surface."
+        }
+      ]
+    },
+    {
+      "id": "comm-noc",
+      "title": "Communication and NoC Modeling",
+      "summary": "The communication layer estimates collective communication and on-chip traffic from operator work maps and parallel strategy.",
+      "tags": [
+        "communication",
+        "noc",
+        "tp",
+        "ep",
+        "pp",
+        "cp",
+        "network"
+      ],
+      "audiences": [
+        "architecture",
+        "model",
+        "business",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/comm/comm_cost.py",
+        "llm_perf/comm/noc.py"
+      ],
+      "analysisPoints": [
+        {
+          "name": "Tensor parallel communication",
+          "what": "Estimate all-reduce, all-gather, and reduce-scatter traffic required by TP splits.",
+          "inputs": [
+            "tp",
+            "activation bytes",
+            "hidden size",
+            "phase"
+          ],
+          "outputs": [
+            "tp comm time",
+            "all-reduce contribution"
+          ],
+          "code": [
+            "gpu_comm",
+            "all_gather_time",
+            "reduce_scatter_time"
+          ],
+          "paperNote": "TP communication is one of the main collective costs included in the paper's communication layer."
+        },
+        {
+          "name": "Expert parallel dispatch/combine",
+          "what": "Estimate MoE all-to-all style dispatch and combine communication.",
+          "inputs": [
+            "ep",
+            "topk",
+            "expert count",
+            "token count",
+            "activation bpe"
+          ],
+          "outputs": [
+            "dispatch time",
+            "combine time",
+            "dispatch/combine overhead"
+          ],
+          "code": [
+            "gpu_comm",
+            "all_to_all_time"
+          ],
+          "paperNote": "MoE routing overhead is modeled through dispatch and combine traffic rather than hidden inside FFN compute."
+        },
+        {
+          "name": "Pipeline parallel communication",
+          "what": "Model activation send/receive at selected stage boundaries.",
+          "inputs": [
+            "pp",
+            "pp_slice_point",
+            "hidden size",
+            "batch/tokens"
+          ],
+          "outputs": [
+            "pp comm time",
+            "stage boundary traffic"
+          ],
+          "code": [
+            "pipeline communication in comm_cost.py"
+          ],
+          "paperNote": "Covered by the paper's Communication and NoC Modeling section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Context parallel attention communication",
+          "what": "Model KV sequence sharding and ring-attention communication for attention CP.",
+          "inputs": [
+            "attn_cp",
+            "kv_seq",
+            "q_seq",
+            "head count",
+            "activation bpe"
+          ],
+          "outputs": [
+            "cp comm time",
+            "local/global KV sequence"
+          ],
+          "code": [
+            "_attention_gpu_shape",
+            "gpu_comm"
+          ],
+          "paperNote": "Covered by the paper's Communication and NoC Modeling section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "On-chip NoC traffic",
+          "what": "Route SM, GPC, L2, HBM, link, and D2D traffic according to work maps.",
+          "inputs": [
+            "work_map",
+            "a/b/o sizes",
+            "raw traffic sizes",
+            "topology"
+          ],
+          "outputs": [
+            "NoC time",
+            "bandwidth utilization",
+            "bottleneck path"
+          ],
+          "code": [
+            "hw_noc_run"
+          ],
+          "paperNote": "NoC routing is the bridge from operator bytes to SM/GPC/L2/HBM/link bottleneck explanations."
+        },
+        {
+          "name": "Communication algorithm selection",
+          "what": "Compare all-reduce modes such as ring, SUMMA, tree, and all-to-all variants.",
+          "inputs": [
+            "allreduce_type",
+            "gpu count",
+            "message size",
+            "bandwidth/latency"
+          ],
+          "outputs": [
+            "collective time",
+            "algorithm-sensitive bottleneck"
+          ],
+          "code": [
+            "GlobalConfig.allreduce_type",
+            "comm_cost.py"
+          ],
+          "paperNote": "Covered by the paper's Communication and NoC Modeling section as part of the cost-model analysis surface."
+        }
+      ]
+    },
+    {
+      "id": "memory-batch",
+      "title": "Memory Capacity and Batch Constraints",
+      "summary": "Capacity modeling estimates HBM budget for weights, experts, MLA parameters, KV cache, and activation/tile storage.",
+      "tags": [
+        "memory",
+        "batch",
+        "hbm",
+        "kv-cache",
+        "capacity"
+      ],
+      "audiences": [
+        "architecture",
+        "model",
+        "business"
+      ],
+      "modules": [
+        "llm_perf/core/cost_model.py",
+        "llm_perf/core/global_config.py"
+      ],
+      "analysisPoints": [
+        {
+          "name": "HBM budget",
+          "what": "Subtract model weights, expert weights, MLA parameters, and KV cache from available HBM.",
+          "inputs": [
+            "hbm_size",
+            "weight_bpe",
+            "n_layers",
+            "expert count",
+            "KV cache shape"
+          ],
+          "outputs": [
+            "remaining HBM",
+            "negative-memory rejection"
+          ],
+          "code": [
+            "main decode/prefill loops in cost_model.py"
+          ],
+          "paperNote": "The paper treats capacity as a first-class rejection rule before throughput analysis."
+        },
+        {
+          "name": "Force max batch",
+          "what": "Estimate maximum decode batch from remaining HBM and per-request KV cache cost.",
+          "inputs": [
+            "force_max_batch",
+            "kv_cache_1batch",
+            "remain_mem"
+          ],
+          "outputs": [
+            "max aligned batch",
+            "batch sweep candidate"
+          ],
+          "code": [
+            "GlobalConfig.force_max_batch",
+            "cost_model.py"
+          ],
+          "paperNote": "Covered by the paper's Memory Capacity and Batch Constraints section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "KV cache footprint",
+          "what": "Estimate per-batch KV cache using compressed KV, RoPE dimension, KV heads, layer count, sequence length, and bpe.",
+          "inputs": [
+            "compress_kv",
+            "rope_dim",
+            "head_kv",
+            "layers",
+            "input/output length",
+            "kv_cache_bpe"
+          ],
+          "outputs": [
+            "KV cache bytes",
+            "PD transfer bytes"
+          ],
+          "code": [
+            "cost_model.py",
+            "estimate_pd_transfer"
+          ],
+          "paperNote": "This metric connects decode capacity and PD transfer cost through the same KV-cache shape assumptions.",
+          "formulaRefs": [
+            "kv-cache"
+          ]
+        },
+        {
+          "name": "Tile fit constraints",
+          "what": "Reject or downselect SM tile candidates that exceed RF, shared memory, or local buffer capacity.",
+          "inputs": [
+            "m_t/n_t/k_t",
+            "rf_size",
+            "sm_size",
+            "tmem_size"
+          ],
+          "outputs": [
+            "legal tiles",
+            "early rejection",
+            "reload path"
+          ],
+          "code": [
+            "sm_gemm"
+          ],
+          "paperNote": "Covered by the paper's Memory Capacity and Batch Constraints section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Activation and output traffic",
+          "what": "Estimate per-layer activation, weight, and output memory movement under chosen tiling and layout.",
+          "inputs": [
+            "a_bpe",
+            "b_bpe",
+            "o_bpe",
+            "work map",
+            "tile shape"
+          ],
+          "outputs": [
+            "a_raw_size",
+            "b_raw_size",
+            "o_raw_size"
+          ],
+          "code": [
+            "sm_gemm",
+            "sm_mha",
+            "sm_softmax"
+          ],
+          "paperNote": "Covered by the paper's Memory Capacity and Batch Constraints section as part of the cost-model analysis surface."
+        }
+      ]
+    },
+    {
+      "id": "strategy-search",
+      "title": "Parallel Strategy Search",
+      "summary": "The model can sweep system-level and kernel-level strategies to find Pareto-efficient latency-throughput points.",
+      "tags": [
+        "search",
+        "sweep",
+        "parallelism",
+        "pareto",
+        "optimization"
+      ],
+      "audiences": [
+        "architecture",
+        "business",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/core/hardware_gpu.py",
+        "scripts/plot_throughput_tps.py",
+        "scripts/plot_sm_gemm_mnk.py"
+      ],
+      "analysisPoints": [
+        {
+          "name": "System map enumeration",
+          "what": "Enumerate legal PP, attention DP/TP/CP, and FFN DP/TP/EP combinations under a fixed GPU count.",
+          "inputs": [
+            "gpu_num",
+            "attn_tp_range_list",
+            "attn_cp_range_list",
+            "ffn_tp_range_list"
+          ],
+          "outputs": [
+            "sys_work_map",
+            "candidate parallel strategies"
+          ],
+          "code": [
+            "hardware_gpu._gen_sys_work_map"
+          ],
+          "paperNote": "System search enumerates exact-fit PP, attention DP/TP/CP, and FFN DP/TP/EP mappings."
+        },
+        {
+          "name": "GPU work-map enumeration",
+          "what": "Generate die/partition/GPC/SM work maps for active SM counts.",
+          "inputs": [
+            "gpu_sm_num",
+            "gpc_sm_num",
+            "gpc_num_par",
+            "die_num",
+            "par_num_die"
+          ],
+          "outputs": [
+            "gpu_work_map",
+            "active SM count"
+          ],
+          "code": [
+            "GPUWorkMapper.generate_gpu_work_map_for_active_sms"
+          ],
+          "paperNote": "Covered by the paper's Parallel Strategy Search section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Batch and GPU count sweep",
+          "what": "Run performance sweeps across GPU counts, batch sizes, and parallel settings.",
+          "inputs": [
+            "gpu_num_list",
+            "batch_size_list",
+            "force_regen",
+            "parallel_workers"
+          ],
+          "outputs": [
+            "strategy sweep CSV",
+            "best-by-batch plots"
+          ],
+          "code": [
+            "cost_model.py",
+            "plot_throughput_tps.py"
+          ],
+          "paperNote": "Covered by the paper's Parallel Strategy Search section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Operator micro-sweep",
+          "what": "Scan GEMM M/N/K or MHA Q/KV/hidden dimensions to isolate kernel-level behavior.",
+          "inputs": [
+            "M/N/K ranges",
+            "Q/KV ranges",
+            "hardware"
+          ],
+          "outputs": [
+            "kernel utilization plots",
+            "bottleneck counts"
+          ],
+          "code": [
+            "plot_sm_gemm_mnk.py",
+            "plot_gpu_mha_qkv_lengths.py",
+            "plot_sm_mha_qkv_hidden.py"
+          ],
+          "paperNote": "Covered by the paper's Parallel Strategy Search section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Pareto frontier analysis",
+          "what": "Identify non-dominated points trading off user latency and total throughput.",
+          "inputs": [
+            "tps_per_user",
+            "throughput_total_tps",
+            "strategy parameters"
+          ],
+          "outputs": [
+            "Pareto frontier",
+            "parameter deltas",
+            "web JSON"
+          ],
+          "code": [
+            "compute_pareto_frontier",
+            "build_pareto_web_payload"
+          ],
+          "paperNote": "The paper uses Pareto analysis to explain trade-offs between per-user latency and cluster throughput.",
+          "formulaRefs": [
+            "pareto-dominance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "scenarios",
+      "title": "Prefill, Decode, MTP, and PD Scenario Analysis",
+      "summary": "Scenario-level analysis combines phase summaries, deployment split choices, and throughput constraints into architecture decisions.",
+      "tags": [
+        "prefill",
+        "decode",
+        "mtp",
+        "pd",
+        "scenario"
+      ],
+      "audiences": [
+        "model",
+        "architecture",
+        "business",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/core/mtp_cost.py",
+        "llm_perf/comm/disaggregated_inference.py",
+        "scripts/plot_disaggregation.py"
+      ],
+      "analysisPoints": [
+        {
+          "name": "Prefill stage behavior",
+          "what": "Analyze prompt throughput, long-sequence attention cost, and prompt-stage compute/communication mix.",
+          "inputs": [
+            "input sequence length",
+            "prefill layers",
+            "batch",
+            "GPU map"
+          ],
+          "outputs": [
+            "prefill TPS",
+            "prefill total throughput",
+            "prefill bottleneck"
+          ],
+          "code": [
+            "summarize_llm_timing",
+            "get_final_res.py"
+          ],
+          "paperNote": "Prefill analysis focuses on prompt throughput and long-context attention/FFN work."
+        },
+        {
+          "name": "Decode stage behavior",
+          "what": "Analyze per-user generation TPS, KV load, MoE communication, and batch-dependent GPU utilization.",
+          "inputs": [
+            "output sequence length",
+            "decode layers",
+            "KV cache",
+            "batch"
+          ],
+          "outputs": [
+            "decode TPS",
+            "TPOT",
+            "dominant component"
+          ],
+          "code": [
+            "summarize_llm_timing",
+            "plot_throughput_tps.py"
+          ],
+          "paperNote": "Decode analysis focuses on TPOT, user TPS, KV movement, MoE communication, and utilization."
+        },
+        {
+          "name": "EAGLE MTP stage sweep",
+          "what": "Estimate accepted-token speedup against draft-path overhead across MTP stages and accept rates.",
+          "inputs": [
+            "mtp_stage",
+            "mtp_accept_rate",
+            "draft/verify/memory ratios",
+            "base decode row"
+          ],
+          "outputs": [
+            "expected tokens",
+            "effective speedup",
+            "MTP Pareto rows"
+          ],
+          "code": [
+            "mtp_expected_tokens",
+            "apply_eagle_mtp_stage_sweep"
+          ],
+          "paperNote": "MTP analysis combines expected accepted tokens with draft, verify, and memory overhead ratios.",
+          "formulaRefs": [
+            "mtp-expected-tokens"
+          ]
+        },
+        {
+          "name": "Prefill/Decode disaggregation",
+          "what": "Combine separate prefill and decode phase results and estimate system throughput under KV transfer constraints.",
+          "inputs": [
+            "prefill PhaseResult",
+            "decode PhaseResult",
+            "input/output length",
+            "transport config"
+          ],
+          "outputs": [
+            "system rps",
+            "bottleneck phase",
+            "PD transfer bytes/time"
+          ],
+          "code": [
+            "combine_disaggregated_pair",
+            "estimate_pd_transfer"
+          ],
+          "paperNote": "PD analysis adds KV transfer as an explicit pipeline stage between independent prefill and decode pools.",
+          "formulaRefs": [
+            "kv-cache",
+            "stage-bottleneck"
+          ]
+        },
+        {
+          "name": "Same-node vs cross-node PD",
+          "what": "Select NVLink/P2P when phases fit one node and CX/NIC when they cross nodes.",
+          "inputs": [
+            "gpu_per_node",
+            "prefill GPU num",
+            "decode GPU num",
+            "placement"
+          ],
+          "outputs": [
+            "pd_transfer_transport",
+            "bandwidth",
+            "latency",
+            "rps"
+          ],
+          "code": [
+            "_pd_transfer_config_for_pair"
+          ],
+          "paperNote": "Placement chooses local P2P/NVLink or cross-node NIC transport depending on phase allocation.",
+          "formulaRefs": [
+            "stage-bottleneck"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "decode-af",
+      "title": "Decode Attention/FFN Separation",
+      "summary": "Decode Attention/FFN separation models a decode deployment where attention and FFN stages may run on separate hardware pools with activation transfer between them.",
+      "tags": [
+        "decode-af",
+        "decode",
+        "attention",
+        "ffn",
+        "transfer",
+        "network"
+      ],
+      "audiences": [
+        "architecture",
+        "model",
+        "business",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/comm/disaggregated_inference.py",
+        "llm_perf/tools/get_final_res.py",
+        "scripts/plot_disaggregation.py"
+      ],
+      "analysisPoints": [
+        {
+          "name": "Attention/FFN split activation transfer",
+          "what": "Estimate activation bytes sent between decode attention and decode FFN pools.",
+          "inputs": [
+            "batch",
+            "output tokens",
+            "hidden size",
+            "activation_bpe",
+            "layers",
+            "transfers_per_layer"
+          ],
+          "outputs": [
+            "decode_attn_ffn_transfer_bytes",
+            "messages",
+            "transfer time"
+          ],
+          "code": [
+            "estimate_stage_activation_transfer"
+          ],
+          "paperNote": "The paper's decode A/F formula makes the boundary activation payload explicit.",
+          "formulaRefs": [
+            "decode-af-transfer"
+          ]
+        },
+        {
+          "name": "Split-stage bottleneck analysis",
+          "what": "Treat attention, FFN, and activation transfer as separate pipeline stages and choose the slowest stage as system bottleneck.",
+          "inputs": [
+            "decode attention rps",
+            "decode FFN rps",
+            "transfer rps"
+          ],
+          "outputs": [
+            "bottleneck_phase",
+            "decode_attn_ffn_transfer_rps",
+            "total throughput"
+          ],
+          "code": [
+            "combine_disaggregated_pair"
+          ],
+          "paperNote": "Decode A/F split is interpreted as attention, FFN, and transfer stages with the slowest stage limiting RPS.",
+          "formulaRefs": [
+            "stage-bottleneck"
+          ]
+        },
+        {
+          "name": "Transport sensitivity",
+          "what": "Compare CX/NIC, PCIe, NVLink, or user-provided bandwidth/latency for the attention-to-FFN boundary.",
+          "inputs": [
+            "decode_attn_ffn_transport",
+            "bandwidth_GBps",
+            "latency_ns",
+            "use_gpu_info_bw"
+          ],
+          "outputs": [
+            "transfer bandwidth",
+            "transfer latency",
+            "transfer time"
+          ],
+          "code": [
+            "DecodeAttnFfnSplitConfig",
+            "decode_attn_ffn_config_from_global_config"
+          ],
+          "paperNote": "The paper calls out bandwidth, latency, placement, and GPU-table transport assumptions as sensitivity knobs.",
+          "formulaRefs": [
+            "decode-af-transfer"
+          ]
+        },
+        {
+          "name": "Layer-count sensitivity",
+          "what": "Evaluate how more decoder layers or repeated boundary transfers scale activation movement.",
+          "inputs": [
+            "decode_attn_ffn_layers",
+            "transfers_per_layer"
+          ],
+          "outputs": [
+            "messages",
+            "bytes",
+            "transfer-limited throughput"
+          ],
+          "code": [
+            "estimate_stage_activation_transfer"
+          ],
+          "paperNote": "Covered by the paper's Decode Attention/FFN Separation section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Architecture decision support",
+          "what": "Identify when splitting decode attention and FFN improves stage utilization or becomes network-bound.",
+          "inputs": [
+            "attention/FFN compute balance",
+            "activation size",
+            "transport choice",
+            "GPU allocation"
+          ],
+          "outputs": [
+            "split viability",
+            "network-bound warning",
+            "candidate GPU allocation"
+          ],
+          "code": [
+            "plot_disaggregation.py",
+            "get_final_res.py"
+          ],
+          "paperNote": "The decision point is whether A/F split improves utilization or simply moves the bottleneck onto the network.",
+          "formulaRefs": [
+            "stage-bottleneck"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "outputs",
+      "title": "Output Metrics and Visualization",
+      "summary": "Outputs include per-config Excel files, aggregated CSV/JSON, Pareto payloads, plots, and static web dashboards.",
+      "tags": [
+        "output",
+        "visualization",
+        "excel",
+        "json",
+        "pareto"
+      ],
+      "audiences": [
+        "business",
+        "architecture",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/tools/get_final_res.py",
+        "scripts/plot_throughput_tps.py",
+        "web/pareto.html"
+      ],
+      "analysisPoints": [
+        {
+          "name": "Per-layer Excel result",
+          "what": "Write each simulated configuration to a workbook with layer timing and final summary rows.",
+          "inputs": [
+            "llm_data dataframe",
+            "summary headers",
+            "result path"
+          ],
+          "outputs": [
+            "configuration workbook",
+            "layer-level audit trail"
+          ],
+          "code": [
+            "full_nn_process",
+            "SUMMARY_HEADERS"
+          ],
+          "paperNote": "Covered by the paper's Output Metrics and Visualization section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Summary CSV/JSON",
+          "what": "Aggregate many result files into analysis tables consumed by scripts and web pages.",
+          "inputs": [
+            "result directory",
+            "workbook final rows"
+          ],
+          "outputs": [
+            "final prefill/decode tables",
+            "web data JSON"
+          ],
+          "code": [
+            "get_final_res.py",
+            "plot_throughput_tps.py"
+          ],
+          "paperNote": "Covered by the paper's Output Metrics and Visualization section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Latency-throughput Pareto visualization",
+          "what": "Plot latency-sensitive TPS per user against total throughput and expose frontier parameter deltas.",
+          "inputs": [
+            "tps_per_user",
+            "throughput_total_tps",
+            "strategy fields"
+          ],
+          "outputs": [
+            "Pareto chart",
+            "frontier table",
+            "best-by-batch chart"
+          ],
+          "code": [
+            "web/pareto.html",
+            "web/js/pareto.js"
+          ],
+          "paperNote": "The web Pareto view exposes frontier rows and parameter deltas for planning decisions.",
+          "formulaRefs": [
+            "pareto-dominance"
+          ]
+        },
+        {
+          "name": "Stage decomposition profiles",
+          "what": "Break total time into MLA, KV load, dense MLP, dispatch/combine, experts, all-reduce, and PP/CP communication.",
+          "inputs": [
+            "summary row fields"
+          ],
+          "outputs": [
+            "phase breakdown view",
+            "dominant component labels"
+          ],
+          "code": [
+            "web/profile.html",
+            "summarize_llm_timing"
+          ],
+          "paperNote": "Profile views map TPOT back to MLA, KV load, MLP, dispatch/combine, experts, and communication."
+        },
+        {
+          "name": "Disaggregation plots",
+          "what": "Visualize PD transfer time, decode A/F transfer time, transfer bytes, and stage rps.",
+          "inputs": [
+            "disaggregated rows"
+          ],
+          "outputs": [
+            "PNG plots",
+            "CSV/JSON communication tables"
+          ],
+          "code": [
+            "plot_disaggregation.py"
+          ],
+          "paperNote": "Disaggregation plots are the paper's visual output for PD and decode A/F transfer sensitivity.",
+          "formulaRefs": [
+            "kv-cache",
+            "decode-af-transfer"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "limits",
+      "title": "Model Limitations and Applicability Boundaries",
+      "summary": "The model is useful for architecture analysis and strategy comparison, but it is not a cycle-accurate simulator or a replacement for profiling real kernels.",
+      "tags": [
+        "limitations",
+        "assumptions",
+        "validation",
+        "paper"
+      ],
+      "audiences": [
+        "architecture",
+        "business",
+        "paper"
+      ],
+      "modules": [
+        "llm_perf/core/cost_model.py",
+        "llm_perf/kernels",
+        "llm_perf/comm"
+      ],
+      "analysisPoints": [
+        {
+          "name": "Analytical approximation boundary",
+          "what": "Use the model for relative comparisons and bottleneck discovery, not exact kernel runtime prediction.",
+          "inputs": [
+            "hardware table assumptions",
+            "operator formulas"
+          ],
+          "outputs": [
+            "bounded interpretation of estimates"
+          ],
+          "code": [
+            "all estimator modules"
+          ],
+          "paperNote": "The paper frames all estimates as analytical planning signals, not cycle-accurate predictions."
+        },
+        {
+          "name": "Hardware data dependency",
+          "what": "Accuracy depends on GPU table parameters, bandwidth assumptions, and latency constants.",
+          "inputs": [
+            "gpu_info.xlsx",
+            "GlobalConfig transport settings"
+          ],
+          "outputs": [
+            "sensitivity to hardware table quality"
+          ],
+          "code": [
+            "hardware_gpu.py",
+            "global_config.py"
+          ],
+          "paperNote": "Covered by the paper's Model Limitations and Applicability Boundaries section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Kernel implementation dependency",
+          "what": "Actual vendor kernel scheduling, fusion, caching, and compiler behavior may differ from modeled tiles.",
+          "inputs": [
+            "kernel implementation choices"
+          ],
+          "outputs": [
+            "gap against measured profiling"
+          ],
+          "code": [
+            "gemm.py",
+            "mha.py",
+            "softmax.py"
+          ],
+          "paperNote": "Covered by the paper's Model Limitations and Applicability Boundaries section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Overlap and scheduling assumptions",
+          "what": "Layer aggregation uses explicit overlap rules for sparse attention/expert branches and may not capture all runtime scheduling effects.",
+          "inputs": [
+            "dense/sparse timing rows",
+            "communication times"
+          ],
+          "outputs": [
+            "approximate total time",
+            "overhead ratios"
+          ],
+          "code": [
+            "summarize_llm_timing"
+          ],
+          "paperNote": "Covered by the paper's Model Limitations and Applicability Boundaries section as part of the cost-model analysis surface."
+        },
+        {
+          "name": "Validation workflow",
+          "what": "Treat outputs as hypotheses to validate with targeted kernel benchmarks, communication microbenchmarks, and end-to-end profiling.",
+          "inputs": [
+            "model output",
+            "real benchmark data"
+          ],
+          "outputs": [
+            "calibrated constants",
+            "confidence intervals"
+          ],
+          "code": [
+            "test suite",
+            "plot scripts"
+          ],
+          "paperNote": "The recommended use is narrow with LLMPerf, validate with microbenchmarks/profiles, then calibrate constants."
+        }
+      ]
+    }
+  ],
+  "paperOutline": [
+    {
+      "id": "inputs",
+      "title": "Input Parameters and Modeled Objects",
+      "summary": "Layer rows and model configuration define operator type, tensor shape, phase, precision, MoE topology, token lengths, and optional deployment controls.",
+      "analysisFocus": [
+        "phase-specific layer tables",
+        "prefill/decode split",
+        "MoE and MLA parameters",
+        "precision and byte widths",
+        "MTP and disaggregation controls"
+      ],
+      "outputs": [
+        "normalized layer parser fields",
+        "prefill/decode workbooks",
+        "model argument object"
+      ]
+    },
+    {
+      "id": "hardware",
+      "title": "Hardware Abstraction Layer",
+      "summary": "GPU table rows become compute, topology, memory, and transport objects used by every estimator.",
+      "analysisFocus": [
+        "tensor-core tile shapes",
+        "SM/vector/SFU rates",
+        "RF/SMEM/TMEM/L2/HBM capacity",
+        "die/partition/GPC/SM topology",
+        "P2P/PCIe/NIC/D2D links"
+      ],
+      "outputs": [
+        "hardware_gpu instance",
+        "system work map",
+        "GPU work map",
+        "bandwidth and latency settings"
+      ]
+    },
+    {
+      "id": "operator",
+      "title": "Operator-Level Modeling",
+      "summary": "Core kernels estimate compute cycles, legal tiles, reload traffic, local memory movement, and operator bottlenecks.",
+      "analysisFocus": [
+        "GEMM M/N/K/E mapping",
+        "tile and loop-order search",
+        "MHA and flash attention",
+        "softmax SIMT/SFU work",
+        "vector and depthwise operators"
+      ],
+      "outputs": [
+        "op time",
+        "compute time",
+        "traffic bytes",
+        "chosen tile",
+        "local bottleneck"
+      ]
+    },
+    {
+      "id": "comm-noc",
+      "title": "Communication and NoC Modeling",
+      "summary": "The communication layer accounts for inter-GPU collectives and on-chip routes through SM, GPC, L2, HBM, links, and D2D paths.",
+      "analysisFocus": [
+        "TP all-reduce/all-gather/reduce-scatter",
+        "EP dispatch/combine",
+        "PP boundaries",
+        "CP ring attention",
+        "NoC routing"
+      ],
+      "outputs": [
+        "collective time",
+        "NoC time",
+        "traffic by path",
+        "algorithm-sensitive bottleneck"
+      ]
+    },
+    {
+      "id": "memory-batch",
+      "title": "Memory Capacity and Batch Constraints",
+      "summary": "Capacity analysis subtracts weights, expert state, MLA parameters, and KV cache before a strategy is accepted.",
+      "analysisFocus": [
+        "HBM budget",
+        "KV cache footprint",
+        "force max batch",
+        "tile fit checks",
+        "activation/output traffic"
+      ],
+      "outputs": [
+        "remaining HBM",
+        "negative-memory rejection",
+        "aligned batch candidate",
+        "legal tile set"
+      ]
+    },
+    {
+      "id": "strategy-search",
+      "title": "Parallel Strategy Search",
+      "summary": "Search spans GPU count, batch, hardware type, PP, attention DP/TP/CP, FFN DP/TP/EP, and kernel-local tile choices.",
+      "analysisFocus": [
+        "system map enumeration",
+        "GPU work-map enumeration",
+        "batch and GPU sweeps",
+        "operator micro-sweeps",
+        "Pareto frontier deltas"
+      ],
+      "outputs": [
+        "candidate strategy table",
+        "frontier rows",
+        "best-by-batch points",
+        "parameter deltas"
+      ]
+    },
+    {
+      "id": "scenarios",
+      "title": "Prefill, Decode, MTP, and PD Scenario Analysis",
+      "summary": "Scenario models combine phase summaries with deployment choices to explain throughput, latency, and bottleneck movement.",
+      "analysisFocus": [
+        "prefill throughput",
+        "decode TPOT/TPS",
+        "EAGLE MTP accept-rate scaling",
+        "PD KV transfer",
+        "same-node versus cross-node placement"
+      ],
+      "outputs": [
+        "phase throughput",
+        "effective MTP speedup",
+        "PD transfer bytes/time",
+        "system RPS bottleneck"
+      ]
+    },
+    {
+      "id": "decode-af",
+      "title": "Decode Attention/FFN Separation",
+      "summary": "Decode A/F separation models attention and FFN as separate hardware pools connected by activation transfer.",
+      "analysisFocus": [
+        "attention/FFN stage balance",
+        "activation boundary bytes",
+        "transport bandwidth and latency",
+        "layer-count sensitivity",
+        "network-bound warnings"
+      ],
+      "outputs": [
+        "decode A/F transfer bytes/time",
+        "stage RPS",
+        "bottleneck phase",
+        "split viability"
+      ]
+    },
+    {
+      "id": "outputs",
+      "title": "Output Metrics and Visualization",
+      "summary": "The framework writes audit-friendly workbooks and web-ready CSV/JSON used for Pareto, phase profile, MTP, and disaggregation views.",
+      "analysisFocus": [
+        "per-layer Excel output",
+        "summary CSV/JSON",
+        "Pareto charts",
+        "stage decomposition",
+        "disaggregation plots"
+      ],
+      "outputs": [
+        "TPOT/TPS metrics",
+        "compute/comm split",
+        "dominant component",
+        "web dashboard payload"
+      ]
+    },
+    {
+      "id": "limits",
+      "title": "Model Limitations and Applicability Boundaries",
+      "summary": "The paper positions LLMPerf as an analytical planning model, not a cycle-accurate simulator or replacement for profiling.",
+      "analysisFocus": [
+        "hardware table quality",
+        "operator formula assumptions",
+        "kernel fusion and compiler effects",
+        "runtime overlap",
+        "calibration workflow"
+      ],
+      "outputs": [
+        "bounded interpretation",
+        "sensitivity targets",
+        "validation plan",
+        "calibrated constants"
+      ]
+    }
+  ],
+  "formulas": [
+    {
+      "id": "kv-cache",
+      "name": "KV cache footprint / PD transfer payload",
+      "expression": "B * T_in * L * (compress_kv + rope_dim) * head_kv * kv_cache_bpe",
+      "meaning": "Approximates the per-request KV payload transferred from prefill to decode in PD disaggregation.",
+      "usedBy": [
+        "Memory Capacity and Batch Constraints",
+        "Prefill/Decode disaggregation"
+      ]
+    },
+    {
+      "id": "decode-af-transfer",
+      "name": "Decode Attention/FFN activation transfer",
+      "expression": "B * T_out * L * H * b_act * m",
+      "meaning": "Activation bytes crossing the decode attention-to-FFN boundary; m is transfers per layer.",
+      "usedBy": [
+        "Decode Attention/FFN Separation"
+      ]
+    },
+    {
+      "id": "mtp-expected-tokens",
+      "name": "EAGLE MTP expected accepted tokens",
+      "expression": "sum_{i=0..stage} accept_rate^i",
+      "meaning": "Effective decode tokens per step before draft, verify, and memory overhead ratios are applied.",
+      "usedBy": [
+        "EAGLE MTP stage sweep"
+      ]
+    },
+    {
+      "id": "total-throughput",
+      "name": "Total throughput",
+      "expression": "throughput_total_tps = tps_per_gpu * gpu_num",
+      "meaning": "Cluster-level throughput metric used as the Pareto y-axis when available.",
+      "usedBy": [
+        "Parallel Strategy Search",
+        "Output Metrics and Visualization"
+      ]
+    },
+    {
+      "id": "stage-bottleneck",
+      "name": "Disaggregated system request rate",
+      "expression": "system_rps = min(prefill_rps, decode_rps, transfer_rps)",
+      "meaning": "Pipeline-style bottleneck rule for PD and decode A/F split scenario analyses.",
+      "usedBy": [
+        "Prefill/Decode disaggregation",
+        "Decode Attention/FFN Separation"
+      ]
+    },
+    {
+      "id": "pareto-dominance",
+      "name": "Pareto dominance rule",
+      "expression": "maximize(tps_per_user, throughput_total_tps)",
+      "meaning": "A point remains on the frontier when no other row improves both latency-sensitive user TPS and total throughput.",
+      "usedBy": [
+        "Parallel Strategy Search",
+        "Latency-throughput Pareto visualization"
+      ]
+    }
+  ],
+  "keyMetrics": [
+    {
+      "name": "TPOT",
+      "group": "latency",
+      "meaning": "Time per output token; the main decode latency metric.",
+      "source": "summarize_llm_timing"
+    },
+    {
+      "name": "TPS per user",
+      "group": "latency",
+      "meaning": "User-visible generation rate derived from TPOT.",
+      "source": "summarize_llm_timing"
+    },
+    {
+      "name": "TPS per GPU",
+      "group": "throughput",
+      "meaning": "Normalized hardware throughput for comparing strategies.",
+      "source": "summarize_llm_timing"
+    },
+    {
+      "name": "Total throughput",
+      "group": "throughput",
+      "meaning": "Cluster throughput across all GPUs; Pareto y-axis for strategy sweeps.",
+      "source": "plot_throughput_tps.py"
+    },
+    {
+      "name": "Compute time",
+      "group": "breakdown",
+      "meaning": "Aggregated compute contribution from operator estimators.",
+      "source": "summarize_llm_timing"
+    },
+    {
+      "name": "Communication time",
+      "group": "breakdown",
+      "meaning": "Aggregated TP/EP/PP/CP communication contribution.",
+      "source": "comm_cost.py"
+    },
+    {
+      "name": "KV load time",
+      "group": "memory",
+      "meaning": "Decode-side KV cache movement pressure.",
+      "source": "sm_mha"
+    },
+    {
+      "name": "HBM remaining",
+      "group": "capacity",
+      "meaning": "Post-weight and KV-cache memory budget used to reject infeasible rows.",
+      "source": "cost_model.py"
+    },
+    {
+      "name": "Dispatch/combine overhead",
+      "group": "moe",
+      "meaning": "MoE expert routing communication overhead.",
+      "source": "gpu_comm"
+    },
+    {
+      "name": "MLA/FFN all-reduce time",
+      "group": "communication",
+      "meaning": "Collective communication contribution from attention and FFN tensor parallelism.",
+      "source": "comm_cost.py"
+    },
+    {
+      "name": "CP communication time",
+      "group": "communication",
+      "meaning": "Ring-attention or context-parallel KV exchange time.",
+      "source": "gpu_comm"
+    },
+    {
+      "name": "Dominant component",
+      "group": "bottleneck",
+      "meaning": "Largest modeled component used for bottleneck explanation.",
+      "source": "summarize_decode"
+    },
+    {
+      "name": "PD transfer time",
+      "group": "scenario",
+      "meaning": "KV transfer latency between prefill and decode pools.",
+      "source": "estimate_pd_transfer"
+    },
+    {
+      "name": "Decode A/F transfer time",
+      "group": "scenario",
+      "meaning": "Activation transfer latency between decode attention and FFN pools.",
+      "source": "estimate_stage_activation_transfer"
+    },
+    {
+      "name": "MTP expected tokens",
+      "group": "scenario",
+      "meaning": "Accepted-token gain from speculative decode stages and accept rate.",
+      "source": "mtp_expected_tokens"
+    }
+  ]
+}

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Function Code Explorer - LLM Perf</title>
+  <link rel="stylesheet" href="function_call_graph.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="brand">LLM Perf Code Explorer</div>
+    <div class="nav-links">
+      <a href="index.html">Overview</a>
+      <span class="active">Code Explorer</span>
+      <a href="leaderboard.html">Hardware Ranking</a>
+      <a href="tco.html">TCO</a>
+      <a href="expert_fc_utilization.html">Expert FC Utilization</a>
+      <a href="author.html">Author</a>
+    </div>
+  </nav>
+  <main id="function-call-graph-root" class="page">
+    <section class="hero panel">
+      <div>
+        <p class="eyebrow">Function Explorer</p>
+        <h1>C++ Cost Model 输入、调用栈与公式说明</h1>
+        <p class="subtitle" id="summary-text">Loading native cost model and function explanations...</p>
+      </div>
+      <div class="metrics">
+        <div class="metric"><span>Functions</span><strong id="metric-functions">-</strong></div>
+        <div class="metric"><span>Internal Calls</span><strong id="metric-edges">-</strong></div>
+        <div class="metric"><span>Explained Formulas</span><strong id="metric-formulas">-</strong></div>
+        <div class="metric"><span>Functions With Formulas</span><strong id="metric-annotated">-</strong></div>
+      </div>
+    </section>
+
+    <section id="native-cost-model-section" class="native-section">
+      <article class="panel native-intro">
+        <div>
+          <p class="eyebrow">Native Cost Model</p>
+          <h2>C++ fast path 输入参数和调用关系</h2>
+          <p class="subtitle">这部分把 layer rows、hardware/work-map 输入、native single-op/full-NN 调用链，以及 throughput vs TPS 汇总链路放在同一张交互视图里。</p>
+        </div>
+        <div id="native-overview-cards" class="native-overview-cards"></div>
+      </article>
+
+      <article class="controls panel native-controls">
+        <select id="native-stack-filter">
+          <option value="all">全部调用栈</option>
+        </select>
+        <select id="runtime-risk-filter">
+          <option value="all">全部 runtime 优化</option>
+          <option value="risk">可能错过最优解</option>
+          <option value="safe">不改变候选/结果</option>
+        </select>
+      </article>
+
+      <article class="panel native-wide">
+        <div class="panel-head">
+          <p class="panel-title">C++ cost model 输入参数</p>
+          <span class="panel-meta">按 native 入口和建模阶段分组</span>
+        </div>
+        <div id="native-parameter-groups" class="native-parameter-groups"></div>
+      </article>
+
+      <div class="native-two-column">
+        <article class="panel">
+          <div class="panel-head">
+            <p class="panel-title">Native / throughput 调用栈</p>
+            <span class="panel-meta">点击可跳到 Python wrapper 节点</span>
+          </div>
+          <div id="native-call-stack-list" class="native-call-stack-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <p class="panel-title">Runtime 优化与最优性风险</p>
+            <span class="panel-meta">标红项可能跳过最优候选</span>
+          </div>
+          <div id="runtime-optimization-list" class="runtime-optimization-list"></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="controls panel">
+      <input id="search-input" type="search" placeholder="搜索函数、模块、文件路径或变量名">
+      <select id="module-filter"></select>
+      <select id="formula-filter">
+        <option value="all">全部函数</option>
+        <option value="with-formulas">只看含公式说明</option>
+      </select>
+      <button id="reset-button">Reset</button>
+    </section>
+
+    <section class="workspace">
+      <aside class="panel sidebar">
+        <div class="panel-head sticky-head">
+          <p class="panel-title">Function Index</p>
+          <span id="list-summary" class="panel-meta"></span>
+        </div>
+        <div id="function-list" class="function-list"></div>
+      </aside>
+
+      <section class="main-column">
+        <article class="panel">
+          <div class="panel-head">
+            <p class="panel-title">函数概览</p>
+            <span id="selected-summary" class="panel-meta"></span>
+          </div>
+          <div id="function-overview" class="overview-grid"></div>
+          <div id="guide-steps" class="step-list"></div>
+          <div id="direct-links" class="chip-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <p class="panel-title">公式说明</p>
+            <span id="formula-summary" class="panel-meta"></span>
+          </div>
+          <div id="formula-list" class="formula-list"></div>
+        </article>
+
+        <article class="panel code-panel">
+          <div class="panel-head">
+            <p class="panel-title">源码片段</p>
+            <span id="source-summary" class="panel-meta"></span>
+          </div>
+          <div id="source-view" class="source-view"></div>
+        </article>
+      </section>
+
+      <aside class="stack-column">
+        <article class="panel">
+          <div class="panel-head tree-head">
+            <p class="panel-title">调用者树</p>
+            <div class="tree-actions">
+              <button id="caller-expand-button" type="button">展开一层</button>
+              <button id="caller-reset-button" type="button">收起</button>
+            </div>
+          </div>
+          <div id="caller-tree" class="tree-view"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head tree-head">
+            <p class="panel-title">被调用树</p>
+            <div class="tree-actions">
+              <button id="callee-expand-button" type="button">展开一层</button>
+              <button id="callee-reset-button" type="button">收起</button>
+            </div>
+          </div>
+          <div id="callee-tree" class="tree-view"></div>
+        </article>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    window.FUNCTION_EXPLAINER_DATA_URL = "data/function_call_graph.json";
+  </script>
+  <script src="function_call_graph.js"></script>
+</body>
+</html>

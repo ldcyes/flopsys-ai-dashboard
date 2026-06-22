@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Expert Utilization - Flopsys AI</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-left">
+            <div class="logo">Flopsys AI</div>
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">Overview</a>
+                <a href="leaderboard.html" class="nav-link">Hardware Ranking</a>
+                <a href="tco.html" class="nav-link">TCO</a>
+                <a href="expert_fc_utilization.html" class="nav-link active">Expert Utilization</a>
+                <a href="author.html" class="nav-link">Author</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="container expert-fc-page" id="expert-fc-root">
+        <header class="header">
+            <h1>Expert Utilization</h1>
+            <p>Single-GPU native cost-model sweep for one routed expert. Batch range is 1-16384 tokens per GPU expert; every point comes from simulated all-work-map sweep rows, not extrapolation. FC1 and FC2 share the same up/gate GEMM shape, so they are shown as one FC1/2 curve.</p>
+        </header>
+
+        <section class="expert-fc-panel">
+            <div class="expert-fc-controls">
+                <div class="control-group">
+                    <label for="expert-model-select">Model</label>
+                    <select id="expert-model-select"></select>
+                </div>
+                <div class="control-group expert-fc-gpu-control">
+                    <label>GPU</label>
+                    <div class="checkbox-group expert-checkbox-grid" id="expert-gpu-checkboxes"></div>
+                </div>
+                <div class="control-group">
+                    <label>Expert FC</label>
+                    <div class="checkbox-group" id="expert-op-checkboxes"></div>
+                </div>
+            </div>
+
+            <div class="expert-fc-summary" id="expert-fc-summary">
+                <div><span>Selected series</span><strong id="expert-selected-count">-</strong></div>
+                <div><span>Batch range</span><strong>1 - 16384</strong></div>
+                <div><span>Y axis</span><strong>Useful peak utilization</strong></div>
+                <div><span>Hover metric</span><strong>FLOPs/byte</strong></div>
+                <div><span>Work map search</span><strong>all</strong></div>
+            </div>
+
+            <div class="expert-fc-chart-frame">
+                <svg id="expert-fc-chart" class="expert-fc-chart" role="img" aria-label="Expert FC utilization versus batch curve"></svg>
+                <div class="strategy-tooltip expert-fc-tooltip" id="expert-fc-tooltip"></div>
+            </div>
+
+            <div class="expert-fc-table-wrap">
+                <table class="leaderboard-table expert-fc-table">
+                    <thead>
+                        <tr>
+                            <th>GPU</th>
+                            <th>FC</th>
+                            <th>Peak util</th>
+                            <th>Peak batch</th>
+                            <th>FLOPs/byte at peak</th>
+                            <th>Overall bottleneck</th>
+                            <th>Bandwidth bottleneck</th>
+                            <th>Bandwidth util</th>
+                            <th>Reason below 100%</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expert-fc-bottleneck-table"></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script type="module" src="js/expert-fc-utilization.js?v=20260613-expert-default-no-fc3"></script>
+</body>
+</html>

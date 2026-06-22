@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DeepSeek V4 CSA / HCA / mHC Dynamic Notes</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0d1118;
+            --panel: #151b25;
+            --panel-2: #1d2633;
+            --panel-3: #243246;
+            --text: #eef4ff;
+            --muted: #9ba8bc;
+            --border: rgba(255, 255, 255, 0.12);
+            --accent: #54c6a5;
+            --accent-2: #69a7ff;
+            --warn: #f5c96b;
+            --danger: #ff7a8a;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .navbar {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            min-height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 0 28px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(13, 17, 24, 0.96);
+        }
+
+        .nav-left,
+        .nav-links {
+            display: flex;
+            align-items: center;
+        }
+
+        .nav-left {
+            gap: 24px;
+            min-width: 0;
+        }
+
+        .logo {
+            flex: 0 0 auto;
+            font-weight: 700;
+        }
+
+        .nav-links {
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            color: var(--muted);
+            text-decoration: none;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: var(--text);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        main {
+            width: min(1440px, calc(100vw - 32px));
+            margin: 0 auto;
+            padding: 28px 0 56px;
+        }
+
+        h1,
+        h2,
+        h3,
+        p {
+            margin: 0;
+        }
+
+        .hero {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 24px;
+            align-items: end;
+            padding: 28px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: linear-gradient(135deg, rgba(84, 198, 165, 0.16), rgba(105, 167, 255, 0.08)), var(--panel);
+        }
+
+        .eyebrow {
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            font-size: 12px;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+
+        h1 {
+            font-size: clamp(30px, 4vw, 54px);
+            line-height: 1.04;
+            letter-spacing: 0;
+            max-width: 900px;
+        }
+
+        .subtitle {
+            max-width: 940px;
+            margin-top: 12px;
+            color: var(--muted);
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .hero-metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 110px);
+            gap: 10px;
+        }
+
+        .hero-metric {
+            display: grid;
+            gap: 6px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.18);
+        }
+
+        .hero-metric strong {
+            font-size: 24px;
+        }
+
+        .hero-metric span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 340px minmax(0, 1fr);
+            gap: 18px;
+            margin-top: 18px;
+            align-items: start;
+        }
+
+        .panel {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel);
+            padding: 18px;
+        }
+
+        .sticky {
+            position: sticky;
+            top: 16px;
+        }
+
+        .section-title {
+            margin-bottom: 14px;
+            font-size: 16px;
+            font-weight: 800;
+        }
+
+        .controls {
+            display: grid;
+            gap: 12px;
+        }
+
+        .control {
+            display: grid;
+            gap: 7px;
+        }
+
+        .control label {
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .control-row {
+            display: grid;
+            grid-template-columns: 1fr 88px;
+            gap: 8px;
+            align-items: center;
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            color: var(--text);
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 8px;
+            font: inherit;
+        }
+
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .tab {
+            min-width: 120px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--text);
+            background: var(--panel-2);
+            padding: 10px 14px;
+            cursor: pointer;
+            font-weight: 800;
+        }
+
+        .tab.active {
+            border-color: rgba(84, 198, 165, 0.7);
+            background: rgba(84, 198, 165, 0.18);
+            color: #d9fff4;
+        }
+
+        .content-grid {
+            display: grid;
+            gap: 18px;
+        }
+
+        .tech-header {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .tech-header h2 {
+            font-size: clamp(24px, 2.6vw, 36px);
+        }
+
+        .badge-stack {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: flex-end;
+        }
+
+        .badge {
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 6px 9px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.04);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .flow {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(120px, 1fr));
+            gap: 10px;
+        }
+
+        .flow-step {
+            min-height: 112px;
+            display: grid;
+            align-content: start;
+            gap: 8px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-2);
+        }
+
+        .flow-step strong {
+            color: var(--accent);
+            font-size: 13px;
+        }
+
+        .flow-step span {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.45;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            gap: 18px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 13px;
+        }
+
+        th,
+        td {
+            border-bottom: 1px solid var(--border);
+            padding: 10px;
+            text-align: left;
+            vertical-align: top;
+            overflow-wrap: anywhere;
+        }
+
+        th {
+            color: var(--muted);
+            font-weight: 700;
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        code {
+            color: #d7e9ff;
+            background: rgba(105, 167, 255, 0.12);
+            border: 1px solid rgba(105, 167, 255, 0.18);
+            border-radius: 5px;
+            padding: 2px 5px;
+            font-family: "JetBrains Mono", Consolas, monospace;
+            font-size: 12px;
+        }
+
+        .note {
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        .memory-total {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+
+        .memory-total div {
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-2);
+        }
+
+        .memory-total strong {
+            display: block;
+            font-size: 22px;
+            margin-bottom: 4px;
+        }
+
+        .memory-total span {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .panel-lead {
+            margin: -4px 0 14px;
+            color: var(--muted);
+            line-height: 1.6;
+            font-size: 14px;
+        }
+
+        .section-gap {
+            margin-top: 14px;
+        }
+
+        .formula-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 10px;
+        }
+
+        .formula {
+            display: grid;
+            gap: 8px;
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--panel-2);
+        }
+
+        .formula strong {
+            color: var(--accent-2);
+        }
+
+        .footer {
+            margin-top: 18px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .footer a {
+            color: #9fc7ff;
+        }
+
+        @media (max-width: 1120px) {
+            .hero,
+            .layout,
+            .two-col,
+            .tech-header {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-metrics {
+                grid-template-columns: repeat(4, 1fr);
+            }
+
+            .sticky {
+                position: static;
+            }
+
+            .flow {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+
+        @media (max-width: 640px) {
+            main {
+                width: min(100vw - 18px, 1440px);
+                padding-top: 12px;
+            }
+
+            .hero,
+            .panel {
+                padding: 14px;
+            }
+
+            .hero-metrics,
+            .memory-total,
+            .flow {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar">
+    <div class="nav-left">
+        <div class="logo">Flopsys AI</div>
+        <div class="nav-links">
+            <a href="index.html" class="nav-link">Overview</a>
+            <a href="leaderboard.html" class="nav-link">Hardware Ranking</a>
+            <a href="tco.html" class="nav-link">TCO</a>
+            <a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a>
+            <a href="author.html" class="nav-link">Author</a>
+        </div>
+    </div>
+</nav>
+<main>
+    <section class="hero">
+        <div>
+            <p class="eyebrow">DeepSeek V4 dynamic shape note</p>
+            <h1>CSA / HCA / mHC 算法、尺寸与内存搬移</h1>
+            <p class="subtitle">
+                这是一个独立 HTML 页面，不依赖本站其他脚本或样式。页面使用 DeepSeek V4 公开配置中的默认量级，
+                把 CSA、HCA 和 Manifold-Constrained Hyper-Connections 映射成 cost model 可接入的输入/输出尺寸、访存项和算子类别。
+            </p>
+        </div>
+        <div class="hero-metrics">
+            <div class="hero-metric"><strong id="metric-context">1M</strong><span>max context default</span></div>
+            <div class="hero-metric"><strong id="metric-csa">4x</strong><span>CSA compression</span></div>
+            <div class="hero-metric"><strong id="metric-hca">128x</strong><span>HCA compression</span></div>
+            <div class="hero-metric"><strong id="metric-mtp">1.70</strong><span>MTP expected tokens</span></div>
+        </div>
+    </section>
+
+    <section class="layout">
+        <aside class="panel sticky">
+            <div class="section-title">Shape Controls</div>
+            <div class="controls" id="controls"></div>
+        </aside>
+
+        <section class="content-grid">
+            <div class="panel">
+                <div class="tabs" id="tabs"></div>
+                <div class="tech-header">
+                    <div>
+                        <p class="eyebrow" id="active-abbrev"></p>
+                        <h2 id="active-title"></h2>
+                        <p class="subtitle" id="active-summary"></p>
+                    </div>
+                    <div class="badge-stack" id="active-badges"></div>
+                </div>
+            </div>
+
+            <section class="panel">
+                <div class="section-title">Algorithm Flow</div>
+                <div class="flow" id="algorithm-flow"></div>
+            </section>
+
+            <section class="two-col">
+                <article class="panel">
+                    <div class="section-title">Input / Intermediate / Output Sizes</div>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Tensor / State</th>
+                                <th>Shape</th>
+                                <th>Elements</th>
+                                <th>Role</th>
+                            </tr>
+                            </thead>
+                            <tbody id="shape-table"></tbody>
+                        </table>
+                    </div>
+                </article>
+
+                <article class="panel">
+                    <div class="section-title">Memory Movement Model</div>
+                    <div class="memory-total" id="memory-total"></div>
+                    <div class="table-wrap" style="margin-top: 12px;">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Movement</th>
+                                <th>Expression</th>
+                                <th>Bytes</th>
+                                <th>Cost-model bucket</th>
+                            </tr>
+                            </thead>
+                            <tbody id="memory-table"></tbody>
+                        </table>
+                    </div>
+                </article>
+            </section>
+
+            <section class="panel">
+                <div class="section-title">Cost Model Mapping</div>
+                <div class="formula-grid" id="mapping-grid"></div>
+            </section>
+
+            <section class="panel">
+                <div class="section-title">MTP and Model Settings</div>
+                <p class="panel-lead">
+                    MTP 使用 EAGLE-style speculative decode 口径：主模型 verifier 一次处理
+                    <code>1 + stage</code> 个 token，接受 token 期望值为
+                    <code>sum(accept_rate^i, i=0..stage)</code>，draft/verify/memory 额外时间按 baseline TPOT 的比例建模。
+                </p>
+                <div class="memory-total" id="mtp-total"></div>
+                <section class="two-col section-gap">
+                    <article>
+                        <div class="section-title">MTP Tensor and Memory Items</div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Shape / Formula</th>
+                                    <th>Size</th>
+                                    <th>Cost-model meaning</th>
+                                </tr>
+                                </thead>
+                                <tbody id="mtp-table"></tbody>
+                            </table>
+                        </div>
+                    </article>
+
+                    <article>
+                        <div class="section-title">Current Model Settings</div>
+                        <div class="table-wrap">
+                            <table>
+                                <thead>
+                                <tr>
+                                    <th>Setting</th>
+                                    <th>Value</th>
+                                    <th>Mapped field / use</th>
+                                </tr>
+                                </thead>
+                                <tbody id="model-settings-table"></tbody>
+                            </table>
+                        </div>
+                    </article>
+                </section>
+            </section>
+
+            <section class="panel">
+                <div class="section-title">Modeling Notes</div>
+                <p class="note" id="modeling-note"></p>
+            </section>
+        </section>
+    </section>
+
+    <p class="footer">
+        Sources used for public defaults and terminology:
+        <a href="https://huggingface.co/docs/transformers/main/model_doc/deepseek_v4">Hugging Face Transformers DeepSeek V4 docs</a>,
+        <a href="https://docs.nvidia.com/nemo/automodel/nightly/guides/llm/dsv4-flash.html">NVIDIA NeMo DeepSeek V4 Flash guide</a>,
+        and <a href="https://arxiv.org/abs/2512.24880">mHC arXiv abstract</a>.
+        The byte counts here are analytical traffic approximations before kernel fusion and cache reuse calibration.
+    </p>
+</main>
+
+<script>
+    const state = {
+        active: "csa",
+        B: 1,
+        Sq: 1,
+        Skv: 1048576,
+        D: 4096,
+        V: 129280,
+        Hq: 64,
+        Hkv: 1,
+        Dh: 512,
+        bytes: 1,
+        weightBytes: 1,
+        indexBytes: 4,
+        window: 128,
+        csaRate: 4,
+        csaTopK: 512,
+        hcaRate: 128,
+        indexHeads: 64,
+        indexDim: 128,
+        hcMult: 4,
+        sinkhornIters: 20,
+        mtpStage: 1,
+        mtpAccept: 0.7
+    };
+
+    const controls = [
+        ["B", "Batch", 1, 64, 1],
+        ["Sq", "Query tokens", 1, 8192, 1],
+        ["Skv", "KV context tokens", 128, 1048576, 128],
+        ["D", "Residual hidden size", 512, 16384, 128],
+        ["V", "Vocabulary size", 32000, 262144, 1024],
+        ["Hq", "Query heads", 1, 128, 1],
+        ["Hkv", "KV heads", 1, 16, 1],
+        ["Dh", "Attention head dim", 32, 1024, 16],
+        ["bytes", "Bytes / activation element", 1, 4, 1],
+        ["weightBytes", "Bytes / MTP weight element", 1, 4, 1],
+        ["indexBytes", "Bytes / index element", 1, 8, 1],
+        ["window", "Local sliding window", 0, 4096, 16],
+        ["csaRate", "CSA compression rate", 1, 64, 1],
+        ["csaTopK", "CSA selected compressed blocks", 1, 2048, 1],
+        ["hcaRate", "HCA compression rate", 1, 512, 1],
+        ["indexHeads", "CSA index heads", 1, 128, 1],
+        ["indexDim", "CSA index head dim", 16, 512, 16],
+        ["hcMult", "mHC stream multiplier", 1, 16, 1],
+        ["sinkhornIters", "mHC Sinkhorn iterations", 1, 64, 1],
+        ["mtpStage", "MTP draft stages", 0, 16, 1],
+        ["mtpAccept", "MTP accept rate", 0, 1, 0.01]
+    ];
+
+    const techs = {
+        csa: {
+            abbrev: "CSA",
+            title: "Compress Sparse Attention",
+            summary: "CSA 用低倍率压缩池保存长上下文，再用 indexer 为每个 query 选择少量压缩位置；最终 attention 只访问局部窗口和被选中的 compressed KV。",
+            badges: ["compressor + indexer", "top-k sparse gather", "attention + vector + memory"],
+            steps: [
+                ["Project Q/K/V", "从 residual stream 生成 query，以及写入或读取 KV cache。"],
+                ["Compress KV", "按 csaRate 把长 KV 压缩成较短的 compressed pool。"],
+                ["Lightning Indexer", "query 与 compressed index keys 打分，得到 top-k compressed positions。"],
+                ["Sparse Attention", "读取局部窗口 KV 和 top-k compressed KV，执行 QK / softmax / SV。"],
+                ["Write Output", "写回 attention output，再进入输出投影或后续 block。"]
+            ],
+            note: "CSA 不应只作为 kv_seq 的比例缩小处理。cost model 至少要拆出 indexer scan、top-k metadata、compressed-KV gather、local-window branch 和核心 QK/SV attention。"
+        },
+        hca: {
+            abbrev: "HCA",
+            title: "Heavily Compress Attention",
+            summary: "HCA 用高倍率压缩表示全局上下文，通常不再为每个 query 做大规模 top-k gather，而是在很短的 compressed global memory 上做 dense attention，并保留局部窗口。",
+            badges: ["heavy compressor", "dense global compressed attention", "memory reduction"],
+            steps: [
+                ["Project Q/K/V", "生成 query，并维护原始局部 KV 与 heavily-compressed KV cache。"],
+                ["Heavy Compress", "按 hcaRate 把长上下文压缩成很短的全局 memory。"],
+                ["Local Branch", "局部窗口仍读取最近 W 个 token，保护近邻细节。"],
+                ["Compressed Global Branch", "query 对所有 compressed global entries 做 dense attention。"],
+                ["Merge Output", "合并 local output 与 compressed global output。"]
+            ],
+            note: "HCA 的主要收益来自 global KV 读量下降。建模时需要显式区分 local uncompressed KV、heavily compressed KV、compression write/update 和可能的 decompress/merge 开销。"
+        },
+        mhc: {
+            abbrev: "mHC",
+            title: "Manifold-Constrained Hyper-Connections",
+            summary: "mHC 把单 residual stream 扩展成多个 hyper-connection streams，通过受流形约束的 mixing matrix 在 attention/FFN 前后 collapse 和 expand，从而改变层间连接拓扑。",
+            badges: ["hc_mult streams", "Sinkhorn-constrained mixing", "vector/memory dominant"],
+            steps: [
+                ["Expand Streams", "embedding 或 block state 从 [B,S,D] 扩展到 [B,S,hcMult,D]。"],
+                ["Pre Mix", "attention/FFN 前用 constrained mixer 把多流 collapse 到单个 sublayer input。"],
+                ["Run Sublayer", "attention 或 MoE/FFN 本体按原模型执行。"],
+                ["Post Mix", "把 sublayer output 重新分发到 hcMult 个 residual streams。"],
+                ["Final Collapse", "模型末端用 hyper head 把多流合并成 [B,S,D]。"]
+            ],
+            note: "mHC 本体不是 attention，而是 residual connectivity。GEMM/attention/FFN 子层仍走原模型；mHC 的额外成本主要是 stream state 读写、scale/add、mixing matrix 读取和 Sinkhorn 约束计算。"
+        }
+    };
+
+    const el = {
+        controls: document.getElementById("controls"),
+        tabs: document.getElementById("tabs"),
+        abbrev: document.getElementById("active-abbrev"),
+        title: document.getElementById("active-title"),
+        summary: document.getElementById("active-summary"),
+        badges: document.getElementById("active-badges"),
+        flow: document.getElementById("algorithm-flow"),
+        shapeTable: document.getElementById("shape-table"),
+        memoryTable: document.getElementById("memory-table"),
+        memoryTotal: document.getElementById("memory-total"),
+        mappingGrid: document.getElementById("mapping-grid"),
+        mtpTotal: document.getElementById("mtp-total"),
+        mtpTable: document.getElementById("mtp-table"),
+        modelSettingsTable: document.getElementById("model-settings-table"),
+        note: document.getElementById("modeling-note")
+    };
+
+    function fmt(n) {
+        if (!Number.isFinite(n)) return "-";
+        if (Math.abs(n) >= 1e12) return `${(n / 1e12).toFixed(2)}T`;
+        if (Math.abs(n) >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
+        if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
+        if (Math.abs(n) >= 1e3) return `${(n / 1e3).toFixed(2)}K`;
+        return String(Math.round(n));
+    }
+
+    function bytesFmt(bytes) {
+        if (!Number.isFinite(bytes)) return "-";
+        const units = ["B", "KB", "MB", "GB", "TB", "PB"];
+        let value = bytes;
+        let idx = 0;
+        while (value >= 1024 && idx < units.length - 1) {
+            value /= 1024;
+            idx += 1;
+        }
+        return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${units[idx]}`;
+    }
+
+    function ratioFmt(value) {
+        if (!Number.isFinite(value)) return "-";
+        return `${value.toFixed(3)}x`;
+    }
+
+    function ceilDiv(a, b) {
+        return Math.ceil(a / Math.max(1, b));
+    }
+
+    function clamp(value, lo, hi) {
+        return Math.max(lo, Math.min(hi, value));
+    }
+
+    function shape(name, shapeText, elements, role) {
+        return { name, shapeText, elements, role };
+    }
+
+    function movement(name, expression, bytes, bucket) {
+        return { name, expression, bytes, bucket };
+    }
+
+    function common() {
+        const B = state.B;
+        const Sq = state.Sq;
+        const Skv = state.Skv;
+        const D = state.D;
+        const Hq = state.Hq;
+        const Hkv = state.Hkv;
+        const Dh = state.Dh;
+        const E = state.bytes;
+        const local = clamp(state.window, 0, Skv);
+        const qElems = B * Sq * Hq * Dh;
+        const outElems = B * Sq * Hq * Dh;
+        return { B, Sq, Skv, D, Hq, Hkv, Dh, E, local, qElems, outElems };
+    }
+
+    function csaModel() {
+        const c = common();
+        const blocks = ceilDiv(c.Skv, state.csaRate);
+        const selected = Math.min(state.csaTopK, blocks);
+        const idxElems = c.B * c.Sq * blocks * state.indexHeads * state.indexDim;
+        const selectedKvElems = 2 * c.B * c.Sq * selected * c.Hkv * c.Dh;
+        const localKvElems = 2 * c.B * c.Sq * c.local * c.Hkv * c.Dh;
+        const topkBytes = c.B * c.Sq * selected * state.indexBytes;
+        const cacheWriteElems = 2 * c.B * ceilDiv(c.Sq, state.csaRate) * c.Hkv * c.Dh;
+        const shapes = [
+            shape("Residual input X", "[B, Sq, D]", c.B * c.Sq * c.D, "attention block input"),
+            shape("Q", "[B, Sq, Hq, Dh]", c.qElems, "query tensor"),
+            shape("Compressed K/V pool", "[B, ceil(Skv / Rc), Hkv, Dh] x 2", 2 * c.B * blocks * c.Hkv * c.Dh, "compressed long-context memory"),
+            shape("Indexer Q/K", "[B, Sq or ceil(Skv/Rc), Hidx, Didx]", c.B * (c.Sq + blocks) * state.indexHeads * state.indexDim, "top-k selection space"),
+            shape("Top-k compressed positions", "[B, Sq, Kcsa]", c.B * c.Sq * selected, "sparse metadata"),
+            shape("Selected compressed K/V", "[B, Sq, Kcsa, Hkv, Dh] x 2", selectedKvElems, "logical gather view"),
+            shape("Attention output O", "[B, Sq, Hq, Dh]", c.outElems, "core attention output")
+        ];
+        const moves = [
+            movement("Read Q", "B * Sq * Hq * Dh * E", c.qElems * c.E, "HBM/L2 input"),
+            movement("Read local K/V", "2 * B * Sq * min(W,Skv) * Hkv * Dh * E", localKvElems * c.E, "Load KV"),
+            movement("Indexer scan", "B * Sq * ceil(Skv/Rc) * Hidx * Didx * E", idxElems * c.E, "vector/GEMM-like indexer"),
+            movement("Top-k indices", "B * Sq * Kcsa * indexBytes", topkBytes, "metadata"),
+            movement("Gather compressed K/V", "2 * B * Sq * Kcsa * Hkv * Dh * E", selectedKvElems * c.E, "sparse gather / Load KV"),
+            movement("Compressed cache update", "2 * B * ceil(Sq/Rc) * Hkv * Dh * E", cacheWriteElems * c.E, "HBM write"),
+            movement("Write output O", "B * Sq * Hq * Dh * E", c.outElems * c.E, "HBM write")
+        ];
+        const mappings = [
+            ["QK / SV core", "GEMM / MHA", "Use effective KV length = local W + selected compressed positions."],
+            ["Lightning indexer", "GEMM + top-k vector", "Dot product can use GEMM-like model; top-k and index materialization are vector/metadata."],
+            ["Compressed-KV gather", "memory / NoC", "Irregular gather should be modeled separately from dense HBM streaming."],
+            ["Compression update", "GEMM or vector", "Depends on learned compressor implementation; expose as its own sub-op."]
+        ];
+        return { shapes, moves, mappings };
+    }
+
+    function hcaModel() {
+        const c = common();
+        const blocks = ceilDiv(c.Skv, state.hcaRate);
+        const globalKvElems = 2 * c.B * c.Sq * blocks * c.Hkv * c.Dh;
+        const localKvElems = 2 * c.B * c.Sq * c.local * c.Hkv * c.Dh;
+        const cacheWriteElems = 2 * c.B * ceilDiv(c.Sq, state.hcaRate) * c.Hkv * c.Dh;
+        const shapes = [
+            shape("Residual input X", "[B, Sq, D]", c.B * c.Sq * c.D, "attention block input"),
+            shape("Q", "[B, Sq, Hq, Dh]", c.qElems, "query tensor"),
+            shape("Local K/V", "[B, min(W,Skv), Hkv, Dh] x 2", 2 * c.B * c.local * c.Hkv * c.Dh, "near-context exact memory"),
+            shape("Heavily compressed K/V", "[B, ceil(Skv/Rh), Hkv, Dh] x 2", 2 * c.B * blocks * c.Hkv * c.Dh, "global compressed memory"),
+            shape("Dense compressed scores", "[B, Sq, Hq, ceil(Skv/Rh)]", c.B * c.Sq * c.Hq * blocks, "global attention scores"),
+            shape("Merged output O", "[B, Sq, Hq, Dh]", c.outElems, "local + compressed global output")
+        ];
+        const moves = [
+            movement("Read Q", "B * Sq * Hq * Dh * E", c.qElems * c.E, "HBM/L2 input"),
+            movement("Read local K/V", "2 * B * Sq * min(W,Skv) * Hkv * Dh * E", localKvElems * c.E, "Load KV"),
+            movement("Read compressed global K/V", "2 * B * Sq * ceil(Skv/Rh) * Hkv * Dh * E", globalKvElems * c.E, "compressed Load KV"),
+            movement("Compressed cache update", "2 * B * ceil(Sq/Rh) * Hkv * Dh * E", cacheWriteElems * c.E, "HBM write"),
+            movement("Write merged O", "B * Sq * Hq * Dh * E", c.outElems * c.E, "HBM write")
+        ];
+        const mappings = [
+            ["Local branch", "MHA", "Same as normal attention over min(W, Skv)."],
+            ["Compressed global branch", "MHA / GEMM", "Dense attention over ceil(Skv/Rh), usually much shorter than full context."],
+            ["Heavy compression", "GEMM or vector", "Model as explicit compressor op, not only as smaller KV cache."],
+            ["Merge", "vector", "Elementwise or small projection combine after branches."]
+        ];
+        return { shapes, moves, mappings };
+    }
+
+    function mhcModel() {
+        const c = common();
+        const M = state.hcMult;
+        const streamElems = c.B * c.Sq * M * c.D;
+        const baseElems = c.B * c.Sq * c.D;
+        const matrixBytes = 3 * M * M * 4;
+        const sinkhornBytes = state.sinkhornIters * M * M * 4 * 2;
+        const shapes = [
+            shape("Input residual stream", "[B, S, D]", baseElems, "standard transformer state"),
+            shape("Hyper-connection streams", "[B, S, hcMult, D]", streamElems, "expanded residual state"),
+            shape("pre mixer", "[hcMult, hcMult] or triplet weights", M * M, "collapse before attention/FFN"),
+            shape("Sublayer input", "[B, S, D]", baseElems, "attention or FFN input after pre mix"),
+            shape("post mixer output", "[B, S, hcMult, D]", streamElems, "distributed sublayer output"),
+            shape("Final hyper head", "[B, S, D]", baseElems, "collapsed model output")
+        ];
+        const moves = [
+            movement("Read stream state for pre mix", "B * S * hcMult * D * E", streamElems * c.E, "vector / HBM"),
+            movement("Write sublayer input", "B * S * D * E", baseElems * c.E, "HBM/L2 write"),
+            movement("Read sublayer output", "B * S * D * E", baseElems * c.E, "HBM/L2 read"),
+            movement("Read + write stream update", "2 * B * S * hcMult * D * E", 2 * streamElems * c.E, "vector / HBM"),
+            movement("Mixer matrices", "3 * hcMult^2 * 4B", matrixBytes, "constant/small tensor"),
+            movement("Sinkhorn normalization", "iters * hcMult^2 * 2 * 4B", sinkhornBytes, "small vector/control")
+        ];
+        const mappings = [
+            ["pre/post mix", "vector", "Scale/add over residual streams; memory-bound unless fused."],
+            ["stream materialization", "memory", "Naive implementation multiplies activation state by hcMult."],
+            ["Sinkhorn constraint", "vector/control", "Small matrix normalization; usually not tensor-core dominant."],
+            ["attention/FFN sublayer", "existing MHA/GEMM/MoE", "Do not move the whole sublayer into mHC; mHC wraps it."]
+        ];
+        return { shapes, moves, mappings };
+    }
+
+    function modelForActive() {
+        if (state.active === "csa") return csaModel();
+        if (state.active === "hca") return hcaModel();
+        return mhcModel();
+    }
+
+    function mtpExpectedTokens(stage, acceptRate) {
+        let total = 0;
+        for (let offset = 0; offset <= stage; offset += 1) {
+            total += acceptRate ** offset;
+        }
+        return total;
+    }
+
+    function mtpModel() {
+        const c = common();
+        const stage = Math.max(0, Math.round(state.mtpStage));
+        const acceptRate = clamp(state.mtpAccept, 0, 1);
+        const verifierTokens = 1 + stage;
+        const expectedTokens = mtpExpectedTokens(stage, acceptRate);
+        const verifierHiddenElems = c.B * verifierTokens * c.D;
+        const verifierLogitElems = c.B * verifierTokens * state.V;
+        const draftHiddenElems = c.B * stage * c.D;
+        const draftLogitElems = c.B * stage * state.V;
+        const acceptBytes = c.B * stage * state.indexBytes;
+        const mtpHeadBytes = stage * c.D * state.V * state.weightBytes;
+        const localKvBytes = 2 * c.B * verifierTokens * c.local * c.Hkv * c.Dh * c.E;
+        const compressedKvBytes = 2 * c.B * verifierTokens * ceilDiv(c.Skv, state.hcaRate) * c.Hkv * c.Dh * c.E;
+        const runtimeBytes =
+            verifierHiddenElems * c.E +
+            verifierLogitElems * c.E +
+            draftHiddenElems * c.E +
+            draftLogitElems * c.E +
+            acceptBytes +
+            localKvBytes +
+            compressedKvBytes;
+        const rows = [
+            {
+                item: "Verifier input tokens",
+                formula: "[B, 1 + stage, D]",
+                size: `${fmt(verifierHiddenElems)} elems`,
+                meaning: "base model main verifier forward"
+            },
+            {
+                item: "Verifier output logits",
+                formula: "[B, 1 + stage, V]",
+                size: `${bytesFmt(verifierLogitElems * c.E)}`,
+                meaning: "mtp_verifier_output_logits"
+            },
+            {
+                item: "Draft hidden states",
+                formula: "[B, stage, D]",
+                size: `${bytesFmt(draftHiddenElems * c.E)}`,
+                meaning: "auxiliary MTP draft path activation"
+            },
+            {
+                item: "Draft logits",
+                formula: "[B, stage, V]",
+                size: `${bytesFmt(draftLogitElems * c.E)}`,
+                meaning: "candidate token scoring"
+            },
+            {
+                item: "Acceptance metadata",
+                formula: "B * stage * indexBytes",
+                size: bytesFmt(acceptBytes),
+                meaning: "accept/reject mask and sampled ids"
+            },
+            {
+                item: "Verifier local KV reads",
+                formula: "2 * B * (1+stage) * min(W,Skv) * Hkv * Dh * E",
+                size: bytesFmt(localKvBytes),
+                meaning: "decode attention traffic multiplied by verifier tokens"
+            },
+            {
+                item: "Verifier compressed KV reads",
+                formula: "2 * B * (1+stage) * ceil(Skv/Rh) * Hkv * Dh * E",
+                size: bytesFmt(compressedKvBytes),
+                meaning: "HCA-like compressed global attention traffic"
+            },
+            {
+                item: "MTP head parameters",
+                formula: "stage * D * V * weightBytes",
+                size: bytesFmt(mtpHeadBytes),
+                meaning: "parameter footprint; runtime reuse depends on cache residency"
+            }
+        ];
+        return {
+            stage,
+            acceptRate,
+            verifierTokens,
+            expectedTokens,
+            runtimeBytes,
+            mtpHeadBytes,
+            rows
+        };
+    }
+
+    function modelSettingsRows(mtp) {
+        return [
+            ["Hidden size", fmt(state.D), "D / residual width"],
+            ["Max context", fmt(state.Skv), "max_position_embeddings"],
+            ["Vocabulary", fmt(state.V), "V / final logits and MTP draft logits"],
+            ["Attention heads", `${state.Hq} Q heads, ${state.Hkv} KV heads`, "num_attention_heads / num_key_value_heads"],
+            ["Head dim", fmt(state.Dh), "head_dim"],
+            ["Activation precision", `${state.bytes} byte`, "E / activation traffic"],
+            ["MTP model", "eagle-style", "mtp_type / --mtp-stage-model eagle"],
+            ["MTP stage", String(mtp.stage), "global_config.mtp_stage"],
+            ["Next-n layers", String(mtp.stage), "num_nextn_predict_layers / upstream MTP layer count"],
+            ["MTP accept rate", mtp.acceptRate.toFixed(2), "global_config.mtp_accept_rate"],
+            ["MTP expected tokens", mtp.expectedTokens.toFixed(3), "sum(accept_rate^i, i=0..stage)"],
+            ["MTP latency source", "native simulation", "summary.mtp_time_ns / mtp_compute_time_ns / mtp_comm_time_ns"],
+            ["CSA compression", `${state.csaRate}x`, "compressed_sparse_attention Rc"],
+            ["CSA top-k", fmt(state.csaTopK), "selected compressed blocks"],
+            ["HCA compression", `${state.hcaRate}x`, "heavily_compressed_attention Rh"],
+            ["Local window", fmt(state.window), "attention local branch W"],
+            ["mHC stream multiplier", `${state.hcMult} streams`, "hc_mult"],
+            ["mHC Sinkhorn iterations", fmt(state.sinkhornIters), "manifold constraint normalization"]
+        ];
+    }
+
+    function renderControls() {
+        el.controls.replaceChildren();
+        controls.forEach(([key, label, min, max, step]) => {
+            const wrap = document.createElement("div");
+            wrap.className = "control";
+            wrap.innerHTML = `
+                <label for="ctrl-${key}">${label}</label>
+                <div class="control-row">
+                    <input id="range-${key}" type="range" min="${min}" max="${max}" step="${step}" value="${state[key]}">
+                    <input id="ctrl-${key}" type="number" min="${min}" max="${max}" step="${step}" value="${state[key]}">
+                </div>
+            `;
+            const range = wrap.querySelector(`#range-${key}`);
+            const number = wrap.querySelector(`#ctrl-${key}`);
+            const update = value => {
+                const parsed = Number(value);
+                state[key] = Number.isFinite(parsed) ? parsed : state[key];
+                range.value = state[key];
+                number.value = state[key];
+                render();
+            };
+            range.addEventListener("input", event => update(event.target.value));
+            number.addEventListener("change", event => update(event.target.value));
+            el.controls.appendChild(wrap);
+        });
+    }
+
+    function renderTabs() {
+        el.tabs.replaceChildren();
+        Object.entries(techs).forEach(([key, tech]) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `tab${state.active === key ? " active" : ""}`;
+            button.textContent = tech.abbrev;
+            button.addEventListener("click", () => {
+                state.active = key;
+                render();
+            });
+            el.tabs.appendChild(button);
+        });
+    }
+
+    function renderHeader() {
+        const tech = techs[state.active];
+        el.abbrev.textContent = tech.abbrev;
+        el.title.textContent = tech.title;
+        el.summary.textContent = tech.summary;
+        el.badges.replaceChildren(...tech.badges.map(text => {
+            const span = document.createElement("span");
+            span.className = "badge";
+            span.textContent = text;
+            return span;
+        }));
+    }
+
+    function renderFlow() {
+        const tech = techs[state.active];
+        el.flow.replaceChildren(...tech.steps.map((step, index) => {
+            const node = document.createElement("article");
+            node.className = "flow-step";
+            node.innerHTML = `<strong>${index + 1}. ${step[0]}</strong><span>${step[1]}</span>`;
+            return node;
+        }));
+    }
+
+    function renderShapes(model) {
+        el.shapeTable.replaceChildren(...model.shapes.map(row => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${row.name}</td>
+                <td><code>${row.shapeText}</code></td>
+                <td>${fmt(row.elements)}</td>
+                <td>${row.role}</td>
+            `;
+            return tr;
+        }));
+    }
+
+    function renderMemory(model) {
+        const total = model.moves.reduce((sum, row) => sum + row.bytes, 0);
+        const maxMove = model.moves.reduce((best, row) => row.bytes > best.bytes ? row : best, model.moves[0]);
+        const qBytes = common().qElems * common().E;
+        el.memoryTotal.innerHTML = `
+            <div><strong>${bytesFmt(total)}</strong><span>logical movement total</span></div>
+            <div><strong>${bytesFmt(maxMove.bytes)}</strong><span>largest item: ${maxMove.name}</span></div>
+            <div><strong>${bytesFmt(qBytes)}</strong><span>Q tensor baseline</span></div>
+        `;
+        el.memoryTable.replaceChildren(...model.moves.map(row => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${row.name}</td>
+                <td><code>${row.expression}</code></td>
+                <td>${bytesFmt(row.bytes)}</td>
+                <td>${row.bucket}</td>
+            `;
+            return tr;
+        }));
+    }
+
+    function renderMapping(model) {
+        el.mappingGrid.replaceChildren(...model.mappings.map(item => {
+            const card = document.createElement("article");
+            card.className = "formula";
+            card.innerHTML = `<strong>${item[0]}</strong><code>${item[1]}</code><span class="note">${item[2]}</span>`;
+            return card;
+        }));
+    }
+
+    function renderMtp() {
+        const mtp = mtpModel();
+        el.mtpTotal.innerHTML = `
+            <div><strong>${mtp.expectedTokens.toFixed(3)}</strong><span>expected accepted tokens / step</span></div>
+            <div><strong>${fmt(mtp.verifierTokens)}</strong><span>verifier tokens per step</span></div>
+            <div><strong>${bytesFmt(mtp.runtimeBytes)}</strong><span>estimated MTP runtime traffic footprint</span></div>
+        `;
+        el.mtpTable.replaceChildren(...mtp.rows.map(row => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${row.item}</td>
+                <td><code>${row.formula}</code></td>
+                <td>${row.size}</td>
+                <td>${row.meaning}</td>
+            `;
+            return tr;
+        }));
+        el.modelSettingsTable.replaceChildren(...modelSettingsRows(mtp).map(row => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${row[0]}</td>
+                <td>${row[1]}</td>
+                <td><code>${row[2]}</code></td>
+            `;
+            return tr;
+        }));
+    }
+
+    function renderNote() {
+        el.note.textContent = techs[state.active].note;
+        document.getElementById("metric-csa").textContent = `${state.csaRate}x`;
+        document.getElementById("metric-hca").textContent = `${state.hcaRate}x`;
+        document.getElementById("metric-context").textContent = state.Skv >= 1000000 ? "1M" : fmt(state.Skv);
+        document.getElementById("metric-mtp").textContent = mtpModel().expectedTokens.toFixed(2);
+    }
+
+    function render() {
+        renderTabs();
+        renderHeader();
+        renderFlow();
+        const model = modelForActive();
+        renderShapes(model);
+        renderMemory(model);
+        renderMapping(model);
+        renderMtp();
+        renderNote();
+    }
+
+    renderControls();
+    render();
+</script>
+</body>
+</html>
