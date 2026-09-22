@@ -1,34 +1,68 @@
+import {
+    decodeStrategyPayload,
+    filterStrategyPoints,
+    frontierRowsForSelection,
+    maximumBy
+} from './dashboard-data.js?v=display-data-v2';
+
 const query = new URLSearchParams(window.location.search);
-const PARETO_POINT_RADIUS = '3';
 const PARETO_FRONTIER_POINT_RADIUS = '4.5';
 const DATASETS = [
     {
+        id: 'h100-deepseek-v3-decode-pareto',
         file: 'data/profile_sweeps/deepseek-ai_DeepSeek-V3/HGX-H100_72/i32768_o32768/h100_deepseek_v3_decode_pareto.json',
-        label: 'H100 72 GPU DeepSeek-V3 I32K/O32K'
+        label: 'H100 72 GPU DeepSeek-V3 I32K/O32K',
+        kind: 'pareto',
+        hardware: ['HGX-H100'],
+        gpuNums: [72]
     },
     {
+        id: 'h200-deepseek-v3-decode-pareto',
         file: 'data/profile_sweeps/deepseek-ai_DeepSeek-V3/HGX-H200_72/i32768_o32768/h200_deepseek_v3_decode_pareto.json',
-        label: 'H200 72 GPU DeepSeek-V3 I32K/O32K'
+        label: 'H200 72 GPU DeepSeek-V3 I32K/O32K',
+        kind: 'pareto',
+        hardware: ['HGX-H200'],
+        gpuNums: [72]
     },
     {
+        id: 'b200-deepseek-v3-decode-pareto',
         file: 'data/profile_sweeps/deepseek-ai_DeepSeek-V3/DGX-B200_72/i32768_o32768/b200_deepseek_v3_decode_pareto.json',
-        label: 'B200 72 GPU DeepSeek-V3 I32K/O32K'
+        label: 'B200 72 GPU DeepSeek-V3 I32K/O32K',
+        kind: 'pareto',
+        hardware: ['DGX-B200'],
+        gpuNums: [72]
     },
     {
+        id: 'b300-deepseek-v3-decode-pareto',
         file: 'data/profile_sweeps/deepseek-ai_DeepSeek-V3/DGX-B300_72/i32768_o32768/b300_deepseek_v3_decode_pareto.json',
-        label: 'B300 72 GPU DeepSeek-V3 I32K/O32K'
+        label: 'B300 72 GPU DeepSeek-V3 I32K/O32K',
+        kind: 'pareto',
+        hardware: ['DGX-B300'],
+        gpuNums: [72]
     },
     {
+        id: 'vera-rubin-deepseek-v3-decode-pareto',
         file: 'data/profile_sweeps/deepseek-ai_DeepSeek-V3/Vera-Rubin_72/i32768_o32768/vera_rubin_deepseek_v3_decode_pareto.json',
-        label: 'Vera-Rubin 72 GPU DeepSeek-V3 I32K/O32K'
+        label: 'Vera-Rubin 72 GPU DeepSeek-V3 I32K/O32K',
+        kind: 'pareto',
+        hardware: ['Vera-Rubin'],
+        gpuNums: [72]
     },
     {
+        id: 'rubin-ultra-deepseek-v3-decode-pareto',
         file: 'data/profile_sweeps/deepseek-ai_DeepSeek-V3/Rubin-Ultra_72/i32768_o32768/rubin_ultra_deepseek_v3_decode_pareto.json',
-        label: 'Rubin-Ultra 72 GPU DeepSeek-V3 I32K/O32K'
+        label: 'Rubin-Ultra 72 GPU DeepSeek-V3 I32K/O32K',
+        kind: 'pareto',
+        hardware: ['Rubin-Ultra'],
+        gpuNums: [72]
     },
     {
+        id: 'h100-deepseek-v3-mtp-stage-detail',
         file: 'data/profile_sweeps/deepseek-ai_DeepSeek-V3/HGX-H100_72/i32768_o32768/h100_deepseek_v3_eagle_mtp72_stage0_9_accept0p7.json',
-        label: 'H100 72 GPU DeepSeek-V3 MTP stage detail'
+        label: 'H100 72 GPU DeepSeek-V3 MTP stage detail',
+        kind: 'mtp_stage',
+        hardware: ['HGX-H100'],
+        gpuNums: [72]
     }
 ];
 let dataFile = query.get('data') || DATASETS[0].file;
@@ -40,51 +74,16 @@ const strategyFilter = document.getElementById('strategy-filter');
 const stageFilter = document.getElementById('stage-filter');
 const bottleneckFilter = document.getElementById('bottleneck-filter');
 const labelButton = document.getElementById('toggle-labels');
+const defaultHeading = document.querySelector('h1')?.textContent || 'Search & Pareto Frontier';
+const defaultSubtitle = document.querySelector('.subtitle')?.textContent || '';
+const defaultDocumentTitle = document.title;
 
 let payload = null;
 let showLabels = false;
+let payloadRequestId = 0;
 
 function number(value) {
     return Number(value || 0);
-}
-
-function truthy(value) {
-    return value === true || value === 1 || value === '1' || value === 'true' || value === 'True';
-}
-
-function normalizeStrategy(point) {
-    if (point.strategy_type !== undefined && point.strategy_type !== null && point.strategy_type !== 'None') {
-        return String(point.strategy_type);
-    }
-    if (truthy(point.pd_enabled) && truthy(point.af_enabled)) return 'pd_af';
-    if (truthy(point.pd_enabled)) return 'pd';
-    if (truthy(point.af_enabled)) return 'af';
-    if (point.mtp_stage !== undefined && point.mtp_stage !== null) return 'mtp';
-    return 'monolithic';
-}
-
-function normalizePoint(point) {
-    return {
-        ...point,
-        strategy_type: normalizeStrategy(point)
-    };
-}
-
-function decodeCompactRecords(payload, rowsKey = 'point_rows') {
-    const columns = Array.isArray(payload?.point_columns) ? payload.point_columns : [];
-    const rows = Array.isArray(payload?.[rowsKey]) ? payload[rowsKey] : [];
-    if (columns.length && rows.length) {
-        return rows.map(row => {
-            const point = {};
-            columns.forEach((column, index) => {
-                point[column] = row[index];
-            });
-            return point;
-        });
-    }
-    if (rowsKey === 'point_rows' && Array.isArray(payload?.points)) return payload.points;
-    if (rowsKey === 'frontier_rows' && Array.isArray(payload?.frontier)) return payload.frontier;
-    return [];
 }
 
 function formatInt(value) {
@@ -120,6 +119,23 @@ function dataUrl(file) {
     return file.startsWith('data/') ? file : `data/${file}`;
 }
 
+function datasetForFile(file) {
+    const dataset = DATASETS.find(candidate => candidate.file === file);
+    if (!dataset) throw new TypeError(`Unsupported Pareto dataset: ${file}`);
+    return dataset;
+}
+
+function descriptorForDataset(dataset) {
+    return {
+        id: dataset.id,
+        label: dataset.label,
+        path: dataset.file,
+        kind: dataset.kind,
+        hardware: dataset.hardware,
+        gpuNums: dataset.gpuNums
+    };
+}
+
 function populateDatasetSelect() {
     datasetSelect.innerHTML = '';
     DATASETS.forEach(dataset => option(datasetSelect, dataset.file, dataset.label));
@@ -141,69 +157,42 @@ function populateFilters(points) {
     uniqueValues(points, 'gpu_num').forEach(value => option(gpuFilter, value, `${value} GPU`));
     uniqueValues(points, 'strategy_type').forEach(value => option(strategyFilter, value, String(value).replaceAll('_', ' / ')));
     uniqueValues(points, 'mtp_stage').forEach(value => option(stageFilter, value, `stage ${value}`));
-    uniqueValues(points, 'dominant_component').forEach(value => option(bottleneckFilter, value, String(value)));
+    uniqueValues(points, 'bottleneck').forEach(value => option(bottleneckFilter, value, String(value)));
     stageFilter.classList.toggle('hidden', !hasMtpStage(points));
     strategyFilter.classList.toggle('hidden', uniqueValues(points, 'strategy_type').length <= 1);
 }
 
-function filteredPoints() {
-    const gpu = gpuFilter.value;
-    const strategy = strategyFilter.value;
-    const stage = stageFilter.value;
-    const bottleneck = bottleneckFilter.value;
-    return payload.points.filter(row => {
-        const gpuOk = gpu === 'all' || String(row.gpu_num) === gpu;
-        const strategyOk = strategy === 'all' || String(row.strategy_type) === strategy;
-        const stageOk = stage === 'all' || String(row.mtp_stage) === stage;
-        const bottleneckOk = bottleneck === 'all' || String(row.dominant_component) === bottleneck;
-        return gpuOk && strategyOk && stageOk && bottleneckOk;
-    });
+function selectedFilterValue(select) {
+    return select.value === 'all' ? null : select.value;
+}
+
+function independentFilters() {
+    return {
+        gpu_num: selectedFilterValue(gpuFilter),
+        strategy_type: selectedFilterValue(strategyFilter),
+        mtp_stage: selectedFilterValue(stageFilter),
+        bottleneck: selectedFilterValue(bottleneckFilter)
+    };
 }
 
 function hasMtpStage(points) {
     return points.some(point => point.mtp_stage !== undefined && point.mtp_stage !== null);
 }
 
-function computeFrontier(points) {
-    const sorted = [...points]
-        .sort((a, b) => number(a.tps_per_user) - number(b.tps_per_user) || yValue(b) - yValue(a));
-    const bestByUser = [];
-    let lastUser = null;
-    sorted.forEach(point => {
-        if (lastUser !== point.tps_per_user) {
-            bestByUser.push(point);
-            lastUser = point.tps_per_user;
-        }
+function frontierGroups(frontierPoints) {
+    const grouped = new Map();
+    frontierPoints.forEach(point => {
+        const gpuNum = String(point.gpu_num);
+        if (!grouped.has(gpuNum)) grouped.set(gpuNum, []);
+        grouped.get(gpuNum).push(point);
     });
-
-    const frontier = [];
-    let bestThroughput = -Infinity;
-    [...bestByUser].reverse().forEach(point => {
-        if (yValue(point) > bestThroughput) {
-            frontier.push(point);
-            bestThroughput = yValue(point);
-        }
-    });
-    return frontier.reverse();
-}
-
-function frontierGroups(points) {
-    const selectedGpu = gpuFilter.value;
-    const groupKeys = (selectedGpu === 'all' ? uniqueValues(points, 'gpu_num') : [selectedGpu]).map(gpuNum => ({ gpuNum }));
-    return groupKeys
-        .map(key => {
-            const groupPoints = points.filter(point => String(point.gpu_num) === String(key.gpuNum));
-            const first = groupPoints[0] || {};
-            return {
-                gpu_num: Number(first.gpu_num ?? key.gpuNum),
-                mtp_stage: null,
-                label: `${key.gpuNum} GPU`,
-                color_key: `gpu-${key.gpuNum}`,
-                points: groupPoints,
-                frontier: computeFrontier(groupPoints)
-            };
-        })
-        .filter(group => group.frontier.length > 0);
+    return [...grouped].map(([gpuNum, frontier]) => ({
+        gpu_num: Number(gpuNum),
+        mtp_stage: null,
+        label: `${gpuNum} GPU`,
+        color_key: `gpu-${gpuNum}`,
+        frontier
+    }));
 }
 
 function formatParameterName(key) {
@@ -211,12 +200,13 @@ function formatParameterName(key) {
 }
 
 function formatParameterValue(value) {
+    if (value === undefined || value === null || value === '') return '-';
     return String(value).replaceAll('_', ' ');
 }
 
 function parameterDelta(current, previous) {
     if (!previous) return 'frontier start';
-    const keys = ['strategy_type', 'batch', 'prefill_gpu_num', 'decode_gpu_num', 'attn_tp', 'attn_dp', 'ffn_tp', 'ffn_ep', 'pp', 'mtp_stage', 'dominant_component'];
+    const keys = ['strategy_type', 'batch', 'prefill_gpu_num', 'decode_gpu_num', 'attn_tp', 'attn_dp', 'ffn_tp', 'ffn_ep', 'pp', 'mtp_stage', 'bottleneck'];
     const changes = keys
         .filter(key => String(current[key]) !== String(previous[key]))
         .map(key => `${formatParameterName(key)}: ${formatParameterValue(previous[key])} -> ${formatParameterValue(current[key])}`);
@@ -235,30 +225,12 @@ function setMetrics(points, groups) {
         document.getElementById('best-throughput').textContent = '-';
         return;
     }
-    const bestUser = Math.max(...points.map(row => number(row.tps_per_user)));
-    const bestThroughput = Math.max(...points.map(row => yValue(row)));
+    const bestUser = maximumBy(points, row => number(row.tps_per_user), -Number.MAX_VALUE);
+    const bestThroughput = maximumBy(points, yValue, -Number.MAX_VALUE);
     document.getElementById('point-count').textContent = formatInt(points.length);
     document.getElementById('frontier-count').textContent = formatInt(totalFrontierPoints(groups));
     document.getElementById('best-user').textContent = formatInt(bestUser);
     document.getElementById('best-throughput').textContent = formatInt(bestThroughput);
-}
-
-function colorFor(point) {
-    const colors = {
-        monolithic: '#60a5fa',
-        mtp: '#f59e0b',
-        pd: '#34d399',
-        af: '#c084fc',
-        af_hybrid: '#2dd4bf',
-        af_mtp: '#e879f9',
-        af_hybrid_mtp: '#14b8a6',
-        pd_af: '#f472b6',
-        dispatch: '#60a5fa',
-        combine: '#f59e0b',
-        mla_compute: '#34d399',
-        routed_expert: '#c084fc'
-    };
-    return colors[point.strategy_type] || colors[point.dominant_component] || '#94a3b8';
 }
 
 function lineColorForGroup(group) {
@@ -289,7 +261,7 @@ function showTooltip(event, point) {
         ${point.af_enabled ? `A/F split: A=${point.decode_attention_gpu || point.hardware}, F=${point.decode_ffn_gpu || 'groq-lpx3'}<br>A/F transfer: ${Number(point.decode_attn_ffn_transfer_time_s || 0).toFixed(4)}s<br>` : ''}
         attn dp/tp: ${point.attn_dp}/${point.attn_tp}<br>
         ffn ep/tp: ${point.ffn_ep}/${point.ffn_tp}<br>
-        bottleneck: ${point.dominant_component}
+        bottleneck: ${point.bottleneck || '-'}
     `;
 }
 
@@ -305,8 +277,8 @@ function renderChart(points, frontier) {
     const margin = { top: 24, right: 28, bottom: 58, left: 94 };
     const plotWidth = width - margin.left - margin.right;
     const plotHeight = height - margin.top - margin.bottom;
-    const maxX = Math.max(...points.map(row => number(row.tps_per_user))) * 1.08;
-    const maxY = Math.max(...points.map(row => yValue(row))) * 1.08;
+    const maxX = maximumBy(points, row => number(row.tps_per_user), -Number.MAX_VALUE) * 1.08;
+    const maxY = maximumBy(points, yValue, -Number.MAX_VALUE) * 1.08;
 
     const x = value => margin.left + number(value) / maxX * plotWidth;
     const y = value => margin.top + plotHeight - number(value) / maxY * plotHeight;
@@ -389,20 +361,6 @@ function renderChart(points, frontier) {
         svg.appendChild(label);
     });
 
-    points.forEach(point => {
-        const circle = create('circle');
-        circle.setAttribute('cx', x(point.tps_per_user));
-        circle.setAttribute('cy', y(yValue(point)));
-        circle.setAttribute('r', PARETO_POINT_RADIUS);
-        circle.setAttribute('fill', colorFor(point));
-        circle.setAttribute('fill-opacity', '0.52');
-        circle.setAttribute('stroke', 'rgba(255,255,255,0.72)');
-        circle.setAttribute('stroke-width', '0.7');
-        circle.addEventListener('mousemove', event => showTooltip(event, point));
-        circle.addEventListener('mouseleave', hideTooltip);
-        svg.appendChild(circle);
-    });
-
     frontier.forEach(group => {
         if (group.frontier.length <= 1) return;
         const line = create('polyline');
@@ -462,9 +420,25 @@ function renderTable(groups) {
     });
 }
 
+function clearPayloadView() {
+    payload = null;
+    svg.replaceChildren();
+    hideTooltip();
+    populateFilters([]);
+    setMetrics([], []);
+    renderTable([]);
+    document.querySelector('h1').textContent = defaultHeading;
+    document.querySelector('.subtitle').textContent = defaultSubtitle;
+    document.title = defaultDocumentTitle;
+    document.getElementById('model-note').textContent = '';
+}
+
 function render() {
-    const points = filteredPoints();
-    const groups = frontierGroups(points);
+    if (!payload) return;
+    const filters = independentFilters();
+    const points = filterStrategyPoints(payload.points, filters, 'independent');
+    const frontier = frontierRowsForSelection(payload.points, filters, 'independent');
+    const groups = frontierGroups(frontier);
     setMetrics(points, groups);
     renderChart(points, groups);
     renderTable(groups);
@@ -477,20 +451,16 @@ function applyPayloadText() {
         document.querySelector('h1').textContent = title;
         document.title = `${title} - Flopsys AI`;
     }
-    if (description) {
-        document.querySelector('.subtitle').textContent = description;
-    }
+    document.querySelector('.subtitle').textContent = description || defaultSubtitle;
 }
 
-async function init() {
-    populateDatasetSelect();
-    await loadPayload(dataFile);
-    datasetSelect.addEventListener('change', async () => {
+function bindEvents() {
+    datasetSelect.addEventListener('change', () => {
         dataFile = datasetSelect.value;
         const url = new URL(window.location.href);
         url.searchParams.set('data', dataFile);
         window.history.replaceState({}, '', url);
-        await loadPayload(dataFile);
+        void loadPayload(dataFile).catch(showLoadError);
     });
     gpuFilter.addEventListener('change', render);
     strategyFilter.addEventListener('change', render);
@@ -504,18 +474,39 @@ async function init() {
     window.addEventListener('resize', render);
 }
 
-async function loadPayload(file) {
-    const response = await fetch(dataUrl(file));
-    payload = await response.json();
-    payload.points = decodeCompactRecords(payload).map(normalizePoint);
-    payload.frontier = decodeCompactRecords(payload, 'frontier_rows').map(normalizePoint);
-    applyPayloadText();
-    populateFilters(payload.points);
-    document.getElementById('model-note').textContent = `${payload.summary.mtp_note} ${payload.summary.pp_note}`;
-    render();
+async function init() {
+    populateDatasetSelect();
+    bindEvents();
+    await loadPayload(dataFile);
 }
 
-init().catch(error => {
-    svg.replaceChildren();
+async function loadPayload(file) {
+    const requestId = ++payloadRequestId;
+    clearPayloadView();
+    try {
+        const dataset = datasetForFile(file);
+        const response = await fetch(dataUrl(dataset.file));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const decoded = decodeStrategyPayload(await response.json(), descriptorForDataset(dataset));
+        if (requestId !== payloadRequestId) return false;
+        payload = decoded;
+        applyPayloadText();
+        populateFilters(payload.points);
+        document.getElementById('model-note').textContent = [
+            payload.summary.mtp_note,
+            payload.summary.pp_note
+        ].filter(Boolean).join(' ');
+        render();
+        return true;
+    } catch (error) {
+        if (requestId !== payloadRequestId) return false;
+        throw error;
+    }
+}
+
+function showLoadError(error) {
+    clearPayloadView();
     document.getElementById('model-note').textContent = `Failed to load Pareto data: ${error.message}`;
-});
+}
+
+init().catch(showLoadError);

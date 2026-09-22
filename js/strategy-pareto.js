@@ -1,4 +1,14 @@
-import { strategyPayloadOptions } from './data.js';
+import { loadStrategyPayload, strategyPayloadOptions } from './data.js?v=display-data-v2';
+import {
+    filterStrategyDescriptors,
+    filterStrategyPoints,
+    frontierRowsForSelection,
+    loadCachedStrategyPayload,
+    maximumBy,
+    preferredStrategyDescriptorSelection,
+    strategyFeatures,
+    strategyTier
+} from './dashboard-data.js?v=display-data-v2';
 
 const state = {
     webInputs: null,
@@ -7,17 +17,16 @@ const state = {
     descriptors: [],
     payloadCache: new Map(),
     points: [],
+    pointDescriptors: new WeakMap(),
+    loadedDescriptorKey: '',
     selectedPointKey: '',
     colorMode: 'strategy',
     showLabels: false,
-    showOnlyFrontier: false,
     bound: false,
     requestId: 0
 };
 
-const BASELINE_STRATEGY = 'monolithic';
 const IMPLICIT_ATTENTION_CP = '1';
-const STRATEGY_POINT_RADIUS = '3';
 const STRATEGY_FRONTIER_POINT_RADIUS = '4.5';
 const HARDWARE_COLOR_PALETTE = [
     '#ff6b4a',
@@ -33,7 +42,6 @@ const HARDWARE_COLOR_PALETTE = [
     '#c084fc',
     '#a3e635'
 ];
-const PREFERRED_HARDWARE_PATTERNS = [/r300/i, /rubin/i, /b300/i];
 const MUTED_SERIES_COLOR = '#94a3b8';
 
 const CONFIG_FIELDS = [
@@ -73,30 +81,23 @@ const STRATEGY_FILTER_LABELS = {
 const FIXED_ATTENTION_CP_VALUES = ['1', '2', '4', '8'];
 const FIXED_MTP_STAGES = Array.from({ length: 10 }, (_, index) => String(index));
 const COMPUTE_COMPONENTS = [
-    { key: 'MLA', label: 'MLA' },
-    { key: 'Dense MLP', label: 'Dense MLP' },
-    { key: 'Shared Expert', label: 'Shared Expert' },
-    { key: 'Routed expert', label: 'Routed expert' },
-    { key: 'final linear softmax', label: 'Final linear softmax' }
+    { key: 'mla_time_s', label: 'MLA' },
+    { key: 'dense_mlp_time_s', label: 'Dense MLP' },
+    { key: 'shared_expert_time_s', label: 'Shared Expert' },
+    { key: 'routed_expert_time_s', label: 'Routed expert' },
+    { key: 'final_linear_softmax_time_s', label: 'Final linear softmax' }
 ];
 const COMMUNICATION_COMPONENTS = [
-    { key: 'Load KV', label: 'Load KV' },
-    { key: 'Dispatch time', label: 'Dispatch' },
-    { key: 'Combine time', label: 'Combine' },
-    { key: 'MLA all reduce', label: 'MLA all-reduce' },
-    { key: 'MLA cp ring', label: 'MLA CP ring' },
-    { key: 'FFN all reduce', label: 'FFN all-reduce' },
+    { key: 'load_kv_time_s', label: 'Load KV' },
+    { key: 'dispatch_time_s', label: 'Dispatch' },
+    { key: 'combine_time_s', label: 'Combine' },
+    { key: 'mla_all_reduce_time_s', label: 'MLA all-reduce' },
+    { key: 'mla_cp_ring_time_s', label: 'MLA CP ring' },
+    { key: 'ffn_all_reduce_time_s', label: 'FFN all-reduce' },
     { key: 'pd_transfer_time_s', label: 'PD transfer' },
     { key: 'decode_attn_ffn_transfer_time_s', label: 'Decode A/F transfer' }
 ];
 const BOTTLENECK_CLASSES = ['gpc', 'sm', 'l2', 'hbm', 'compute', 'd2d'];
-const BOTTLENECK_FIELDS = [
-    'compute_bottleneck',
-    'overall_bottleneck',
-    'bandwidth_bottleneck',
-    'dominant_component',
-    'bottleneck'
-];
 
 function number(value) {
     if (value === undefined || value === null || value === '') return 0;
@@ -105,10 +106,6 @@ function number(value) {
 
 function formatInt(value) {
     return Math.round(number(value)).toLocaleString('en-US');
-}
-
-function truthy(value) {
-    return value === true || value === 1 || value === '1' || value === 'true' || value === 'True';
 }
 
 function hasValue(value) {
@@ -278,45 +275,15 @@ function renderStrategyTypeCheckboxes(values, selectedValues) {
 }
 
 function isMtpPoint(point) {
-    const strategy = String(point.strategy_type || '').toLowerCase();
-    const mtpModel = String(point.mtp_model ?? '').toLowerCase();
-    if (strategy.includes('mtp')) return true;
-    if (truthy(point.mtp_enabled)) return true;
-    return Boolean(mtpModel && !['off', 'none', 'false', '0'].includes(mtpModel));
-}
-
-function strategyFeatures(point) {
-    const strategy = String(point.strategy_type || '').toLowerCase();
-    const features = new Set();
-    if (isMtpPoint(point)) features.add('mtp');
-    if (strategy.includes('pd') || truthy(point.pd_enabled)) features.add('pd');
-    if (strategy.includes('af') || strategy.includes('hybrid') || truthy(point.af_enabled)) features.add('af');
-    return features;
-}
-
-function strategyTier(point) {
-    const features = strategyFeatures(point);
-    if (!features.size) return 'monolithic';
-    if (features.has('af')) return 'af';
-    if (features.has('pd')) return 'pd';
-    return 'mtp';
+    return strategyFeatures(point).has('mtp');
 }
 
 function availableStrategyFilterOptions(points) {
-    const candidatePoints = points.length ? points : state.points;
-    return STRATEGY_FILTER_OPTIONS.filter(option => candidatePoints.some(point => strategyTier(point) === option));
+    return STRATEGY_FILTER_OPTIONS;
 }
 
 function defaultStrategyFilterSelection(strategies) {
-    const available = new Set(strategies);
-    return DEFAULT_STRATEGY_FILTER_OPTIONS.filter(option => available.has(option));
-}
-
-function pointHasStrategyFeatures(point, requiredFeatures) {
-    const tier = strategyTier(point);
-    if (tier === 'monolithic') return true;
-    if (!requiredFeatures.size) return false;
-    return requiredFeatures.has(tier);
+    return DEFAULT_STRATEGY_FILTER_OPTIONS;
 }
 
 function checkedValues(containerId) {
@@ -330,43 +297,20 @@ function selectedValuesIn(containerId, values) {
     return checkedValues(containerId).filter(value => available.has(String(value)));
 }
 
+function checkboxGroupInitialized(containerId) {
+    return Boolean(element(containerId)?.querySelector('input[type="checkbox"]'));
+}
+
 function selectedOrDefault(containerId, values, fallbackValues) {
-    const selected = selectedValuesIn(containerId, values);
-    return selected.length ? selected : fallbackValues;
-}
-
-function dataBackedHardwareValues() {
-    return descriptorHardwareValues().map(String);
-}
-
-function defaultHardwareSelection(values) {
-    if (!values.length) return [];
-    const dataBacked = new Set(dataBackedHardwareValues());
-    const candidates = values.filter(value => dataBacked.has(String(value)));
-    const preferredValues = candidates.length ? candidates : values;
-    for (const pattern of PREFERRED_HARDWARE_PATTERNS) {
-        const match = preferredValues.find(value => pattern.test(String(value)));
-        if (match) return [match];
-    }
-    return [preferredValues[0]];
-}
-
-function defaultGpuNumSelection(values) {
-    if (!values.length) return [];
-    const configured = state.currentConfig?.cardCount == null ? '' : String(state.currentConfig.cardCount);
-    if (configured && values.map(String).includes(configured)) return [configured];
-    const descriptorValues = descriptorGpuNumValues();
-    const dataBacked = descriptorValues.find(value => values.map(String).includes(String(value)));
-    if (dataBacked) return [dataBacked];
-    return [values[0]];
+    if (!checkboxGroupInitialized(containerId)) return fallbackValues;
+    return selectedValuesIn(containerId, values);
 }
 
 function descriptorHardwareValues() {
     const descriptorHardware = state.descriptors.flatMap(descriptor =>
         Array.isArray(descriptor.hardware) ? descriptor.hardware : []
     );
-    const values = uniqueValues(descriptorHardware, value => value);
-    return values.length ? values : (state.webInputs?.hardware || []);
+    return uniqueValues(descriptorHardware, value => value);
 }
 
 function descriptorGpuNumValues() {
@@ -377,14 +321,10 @@ function descriptorGpuNumValues() {
 }
 
 function fixedHardwareValues() {
-    const values = Array.isArray(state.webInputs?.hardware) ? state.webInputs.hardware : [];
-    if (values.length) return values;
     return descriptorHardwareValues();
 }
 
 function fixedGpuNumValues() {
-    const values = Array.isArray(state.webInputs?.gpuNums) ? state.webInputs.gpuNums : [];
-    if (values.length) return values.map(String);
     return descriptorGpuNumValues();
 }
 
@@ -397,124 +337,24 @@ function setNote(value) {
     setText('strategy-pareto-note', value);
 }
 
-function normalizeStrategy(point, descriptor) {
-    if (point.strategy_type) return String(point.strategy_type);
-    if (truthy(point.pd_enabled) && truthy(point.af_enabled)) return 'pd_af';
-    if (truthy(point.pd_enabled)) return 'pd';
-    if (truthy(point.af_enabled)) return 'af';
-    const mtpModel = String(point.mtp_model ?? '').toLowerCase();
-    if (descriptor.kind === 'mtp_stage' || mtpModel && !['off', 'none', 'false', '0'].includes(mtpModel)) return 'mtp';
-    return BASELINE_STRATEGY;
-}
-
-function normalizePoint(point, descriptor) {
-    const gpuNum = number(point.gpu_num ?? point['Gpu num']);
-    const hardware = String(point.hardware || point.GPU || descriptor.hardware?.[0] || descriptor.label || 'unknown');
-    const strategy = normalizeStrategy(point, descriptor);
-    const strategyName = String(strategy).toLowerCase();
-    const pdEnabled = truthy(point.pd_enabled) || strategyName.includes('pd');
-    const afEnabled = truthy(point.af_enabled) || strategyName.includes('af') || strategyName.includes('hybrid');
-    return {
-        ...point,
-        dataset_id: descriptor.id,
-        dataset_label: descriptor.label,
-        hardware,
-        gpu_num: gpuNum,
-        strategy_type: strategy,
-        tps_per_user: number(point.tps_per_user ?? point['TPS per user']),
-        tps_per_gpu: number(point.tps_per_gpu ?? point['TPS per gpu']),
-        throughput_total_tps: number(point.throughput_total_tps ?? point.tps_per_gpu),
-        batch_attn_gpu: point.batch_attn_gpu ?? point['batch attn gpu'] ?? '',
-        batch_ffn_gpu: point.batch_ffn_gpu ?? point['batch ffn gpu'] ?? '',
-        total_machine_batch: point.total_machine_batch ?? point['total machine batch'] ?? '',
-        micro_batch: point.micro_batch ?? point['micro batch'] ?? '',
-        batch: point.batch ?? point.Batch ?? point.batch_attn_gpu ?? point['batch attn gpu'] ?? '',
-        pp: point.pp ?? point.PP ?? '',
-        attn_tp: point.attn_tp ?? point['attn tp'] ?? '',
-        attn_dp: point.attn_dp ?? point['attn dp'] ?? '',
-        attn_cp: point.attn_cp ?? point['attn cp'] ?? '',
-        ffn_tp: point.ffn_tp ?? point['ffn tp'] ?? '',
-        ffn_ep: point.ffn_ep ?? point['ffn ep'] ?? '',
-        mtp_stage: point.mtp_stage ?? point['mtp stage'] ?? '',
-        pd_enabled: pdEnabled,
-        af_enabled: afEnabled,
-        prefill_gpu_num: point.prefill_gpu_num ?? '',
-        decode_gpu_num: point.decode_gpu_num ?? '',
-        dominant_component: point.dominant_component || ''
-    };
-}
-
-function decodeCompactRecords(payload, rowsKey = 'point_rows') {
-    const columns = Array.isArray(payload?.point_columns) ? payload.point_columns : [];
-    const rows = Array.isArray(payload?.[rowsKey]) ? payload[rowsKey] : [];
-    if (columns.length && rows.length) {
-        return rows.map(row => {
-            const point = {};
-            columns.forEach((column, index) => {
-                point[column] = row[index];
-            });
-            return point;
-        });
-    }
-    if (rowsKey === 'point_rows' && Array.isArray(payload?.points)) return payload.points;
-    if (rowsKey === 'frontier_rows' && Array.isArray(payload?.frontier)) return payload.frontier;
-    return [];
-}
-
 function yValue(point) {
     return number(point.throughput_total_tps ?? point.tps_per_gpu);
 }
 
-function computeFrontier(points) {
-    const sorted = [...points]
-        .sort((a, b) => number(a.tps_per_user) - number(b.tps_per_user) || yValue(b) - yValue(a));
-    const bestByUser = [];
-    let lastUser = null;
-    sorted.forEach(point => {
-        if (lastUser !== point.tps_per_user) {
-            bestByUser.push(point);
-            lastUser = point.tps_per_user;
-        }
-    });
-
-    const frontier = [];
-    let bestThroughput = -Infinity;
-    [...bestByUser].reverse().forEach(point => {
-        if (yValue(point) > bestThroughput) {
-            frontier.push(point);
-            bestThroughput = yValue(point);
-        }
-    });
-    return frontier.reverse();
-}
-
-function filteredPoints() {
-    const hardware = new Set(checkedValues('strategy-hardware-group'));
-    const gpuNums = new Set(checkedValues('strategy-gpu-num-group'));
-    const strategies = new Set(checkedValues('strategy-type-group'));
-    const batches = new Set((state.currentConfig?.batch || []).map(String));
-    const attnTps = new Set((state.currentConfig?.attnTP || []).map(String));
-    const ffnTps = new Set((state.currentConfig?.ffnTP || []).map(String));
-    const pps = new Set((state.currentConfig?.pp || []).map(String));
-    const attnCps = new Set(selectedRangeValues('attn-cp-slider', FIXED_ATTENTION_CP_VALUES));
-    if (!attnCps.size) attnCps.add(IMPLICIT_ATTENTION_CP);
-    const stages = new Set(selectedRangeValues('strategy-stage-slider', FIXED_MTP_STAGES));
-    const mtpSelected = strategies.size > 0;
-    const hasStageFilter = mtpSelected && stages.size > 0;
-
-    return state.points.filter(point => {
-        if (hardware.size && !hardware.has(String(point.hardware))) return false;
-        if (gpuNums.size && !gpuNums.has(String(point.gpu_num))) return false;
-        if (batches.size && hasValue(point.batch) && !batches.has(String(point.batch))) return false;
-        if (attnTps.size && hasValue(point.attn_tp) && !attnTps.has(String(point.attn_tp))) return false;
-        if (ffnTps.size && hasValue(point.ffn_tp) && !ffnTps.has(String(point.ffn_tp))) return false;
-        if (pps.size && hasValue(point.pp) && !pps.has(String(point.pp))) return false;
-        if (!pointHasStrategyFeatures(point, strategies)) return false;
-        if (attnCps.size && hasValue(point.attn_cp) && !attnCps.has(String(point.attn_cp))) return false;
-        if (strategyFeatures(point).has('mtp') && hasStageFilter && hasValue(point.mtp_stage) && !stages.has(String(point.mtp_stage))) return false;
-        if (strategyFeatures(point).has('mtp') && hasStageFilter && !hasValue(point.mtp_stage)) return false;
-        return true;
-    });
+function overviewFilterState() {
+    const attnCps = selectedRangeValues('attn-cp-slider', FIXED_ATTENTION_CP_VALUES);
+    if (!attnCps.length) attnCps.push(IMPLICIT_ATTENTION_CP);
+    return {
+        hardware: checkedValues('strategy-hardware-group'),
+        gpu_num: checkedValues('strategy-gpu-num-group'),
+        strategy_tier: checkedValues('strategy-type-group'),
+        batch: state.currentConfig?.batch || [],
+        pp: state.currentConfig?.pp || [],
+        attn_tp: state.currentConfig?.attnTP || [],
+        ffn_tp: state.currentConfig?.ffnTP || [],
+        attn_cp: attnCps,
+        mtp_stage: selectedRangeValues('strategy-stage-slider', FIXED_MTP_STAGES)
+    };
 }
 
 function gpuDomainPoints() {
@@ -527,10 +367,20 @@ function gpuDomainPoints() {
     });
 }
 
-function frontierGroups(points) {
-    const keys = uniqueValues(points, point => `${point.hardware}|${point.gpu_num}|${strategyTier(point)}`);
-    return keys.map(key => {
-        const [hardware, gpuNum, tier] = String(key).split('|');
+function frontierGroups(points, frontierPoints) {
+    const groups = [];
+    const seen = new Set();
+    frontierPoints.forEach(point => {
+        const hardware = String(point.hardware);
+        const gpuNum = String(point.gpu_num);
+        const tier = strategyTier(point);
+        const key = JSON.stringify([hardware, gpuNum, tier]);
+        if (!seen.has(key)) {
+            seen.add(key);
+            groups.push({ key, hardware, gpuNum, tier });
+        }
+    });
+    return groups.map(({ key, hardware, gpuNum, tier }) => {
         const groupPoints = points.filter(point =>
             String(point.hardware) === hardware &&
             String(point.gpu_num) === gpuNum &&
@@ -543,13 +393,13 @@ function frontierGroups(points) {
             strategy_type: tier,
             label: `${STRATEGY_STYLES[tier]?.label || tier} ${hardware} ${gpuNum} GPU`,
             points: groupPoints,
-            frontier: computeFrontier(groupPoints)
+            frontier: frontierPoints.filter(point =>
+                String(point.hardware) === hardware &&
+                String(point.gpu_num) === gpuNum &&
+                strategyTier(point) === tier
+            )
         };
-    }).filter(group => group.frontier.length > 0);
-}
-
-function colorFor(point) {
-    return state.colorMode === 'strategy' ? strategyColorFor(strategyTier(point)) : hardwareColorFor(point.hardware);
+    });
 }
 
 function groupColor(index) {
@@ -591,12 +441,17 @@ function configSummary(point) {
     return parts.length ? parts.join(' ') : pointLabel(point);
 }
 
+function descriptorForPoint(point) {
+    return state.pointDescriptors.get(point) || null;
+}
+
 function showTooltip(event, point) {
     const tooltip = element('strategy-chart-tooltip');
     if (!tooltip) return;
+    const descriptor = descriptorForPoint(point);
     tooltip.innerHTML = `
         <strong>${escapeHtml(pointLabel(point))}</strong>
-        dataset: ${escapeHtml(point.dataset_label)}<br>
+        dataset: ${escapeHtml(descriptor?.label || '-')}<br>
         TPS/user: ${formatInt(point.tps_per_user)}<br>
         total throughput: ${formatInt(point.throughput_total_tps)}<br>
         throughput/GPU: ${formatInt(point.tps_per_gpu)}<br>
@@ -605,7 +460,7 @@ function showTooltip(event, point) {
         ${point.af_enabled ? `A/F split: ${escapeHtml(point.decode_attention_gpu || point.hardware)} / ${escapeHtml(point.decode_ffn_gpu || 'groq-lpx3')}<br>` : ''}
         attn dp/tp/cp: ${escapeHtml(displayValue(point.attn_dp))}/${escapeHtml(displayValue(point.attn_tp))}/${escapeHtml(displayValue(point.attn_cp))}<br>
         ffn ep/tp: ${escapeHtml(displayValue(point.ffn_ep))}/${escapeHtml(displayValue(point.ffn_tp))}<br>
-        bottleneck: ${escapeHtml(point.dominant_component || '-')}
+        bottleneck: ${escapeHtml(point.bottleneck || '-')}
     `;
     positionTooltip(tooltip, element('strategy-pareto-chart')?.parentElement, event.clientX, event.clientY);
 }
@@ -637,7 +492,7 @@ function positionTooltip(tooltip, frame, clientX, clientY) {
 
 function pointKey(point) {
     return [
-        point.dataset_id,
+        descriptorForPoint(point)?.id,
         point.hardware,
         point.gpu_num,
         point.strategy_type,
@@ -708,10 +563,7 @@ function bottleneckClassLabel(value) {
 }
 
 function pointBottleneckSource(point) {
-    for (const key of BOTTLENECK_FIELDS) {
-        if (hasValue(point[key])) return point[key];
-    }
-    return '';
+    return hasValue(point.bottleneck) ? point.bottleneck : '';
 }
 
 function bottleneckChips(point) {
@@ -746,7 +598,7 @@ function renderOpBarChart(title, rows) {
             </div>
         `;
     }
-    const maxTime = Math.max(...rows.map(rowMagnitude), 0);
+    const maxTime = maximumBy(rows, rowMagnitude, 0);
     const body = [...rows]
         .sort((a, b) => rowMagnitude(b) - rowMagnitude(a))
         .map(row => {
@@ -869,8 +721,8 @@ function renderChart(points, groups, domainPoints = points) {
     const margin = { top: 24, right: 28, bottom: 54, left: 90 };
     const plotWidth = Math.max(width - margin.left - margin.right, 1);
     const plotHeight = Math.max(height - margin.top - margin.bottom, 1);
-    const maxX = Math.max(...scalePoints.map(point => number(point.tps_per_user)), 1) * 1.08;
-    const maxY = Math.max(...scalePoints.map(point => yValue(point)), 1) * 1.08;
+    const maxX = maximumBy(scalePoints, point => number(point.tps_per_user), 1) * 1.08;
+    const maxY = maximumBy(scalePoints, yValue, 1) * 1.08;
     const x = value => margin.left + number(value) / maxX * plotWidth;
     const y = value => margin.top + plotHeight - number(value) / maxY * plotHeight;
     const create = name => document.createElementNS('http://www.w3.org/2000/svg', name);
@@ -930,20 +782,6 @@ function renderChart(points, groups, domainPoints = points) {
     yAxis.textContent = 'total throughput';
     svg.appendChild(yAxis);
 
-    points.forEach(point => {
-        const selected = isSelectedPoint(point);
-        const circle = create('circle');
-        circle.setAttribute('cx', x(point.tps_per_user));
-        circle.setAttribute('cy', y(yValue(point)));
-        circle.setAttribute('r', STRATEGY_POINT_RADIUS);
-        circle.setAttribute('fill', colorFor(point));
-        circle.setAttribute('fill-opacity', selected ? '0.78' : '0.48');
-        circle.setAttribute('stroke', selected ? '#ffffff' : 'rgba(255,255,255,0.7)');
-        circle.setAttribute('stroke-width', selected ? '2.4' : '0.7');
-        bindPointInteraction(circle, point);
-        svg.appendChild(circle);
-    });
-
     groups.forEach((group, index) => {
         const color = frontierColorFor(group, index);
         if (group.frontier.length > 1) {
@@ -996,19 +834,18 @@ function renderFiltered() {
     syncColorMode();
     syncMtpStageControl();
     state.showLabels = Boolean(element('strategy-labels-toggle')?.checked);
-    state.showOnlyFrontier = Boolean(element('strategy-only-frontier-toggle')?.checked);
-    const points = filteredPoints();
-    const groups = frontierGroups(points);
-    const frontierPoints = groups.flatMap(group => group.frontier);
-    const plottedPoints = state.showOnlyFrontier ? frontierPoints : points;
+    const filters = overviewFilterState();
+    const points = filterStrategyPoints(state.points, filters, 'overview');
+    const frontierPoints = frontierRowsForSelection(state.points, filters, 'overview');
+    const groups = frontierGroups(points, frontierPoints);
     const domainPoints = gpuDomainPoints();
     const selectedPoint = state.selectedPointKey
-        ? points.find(point => pointKey(point) === state.selectedPointKey)
+        ? frontierPoints.find(point => pointKey(point) === state.selectedPointKey)
         : null;
     if (state.selectedPointKey && !selectedPoint) {
         state.selectedPointKey = '';
     }
-    renderChart(plottedPoints, groups, domainPoints);
+    renderChart(frontierPoints, groups, domainPoints);
     renderPointDetail(selectedPoint);
     renderFrontierTable(groups);
 }
@@ -1033,8 +870,12 @@ function populateFilters(points) {
     const gpuNums = fixedGpuNumValues();
     const strategies = availableStrategyFilterOptions(points);
     const stages = FIXED_MTP_STAGES;
-    const selectedHardware = selectedOrDefault('strategy-hardware-group', hardware, defaultHardwareSelection(hardware));
-    const selectedGpuNums = selectedOrDefault('strategy-gpu-num-group', gpuNums, defaultGpuNumSelection(gpuNums));
+    const preferred = preferredStrategyDescriptorSelection(state.descriptors, {
+        hardware: state.webInputs?.hardware || [],
+        gpuNums: state.webInputs?.gpuNums || []
+    });
+    const selectedHardware = selectedOrDefault('strategy-hardware-group', hardware, preferred.hardware);
+    const selectedGpuNums = selectedOrDefault('strategy-gpu-num-group', gpuNums, preferred.gpu_num);
     const selectedStrategies = selectedOrDefault('strategy-type-group', strategies, defaultStrategyFilterSelection(strategies));
     renderHardwareCheckboxes(hardware, selectedHardware);
     renderCheckboxGroup('strategy-gpu-num-group', gpuNums, selectedGpuNums, value => `${value} GPU`);
@@ -1044,84 +885,71 @@ function populateFilters(points) {
     syncMtpStageControl();
 }
 
-async function loadPayload(descriptor) {
-    if (state.payloadCache.has(descriptor.path)) {
-        return state.payloadCache.get(descriptor.path);
-    }
-    const response = await fetch(descriptor.path);
-    if (!response.ok) throw new Error(`${descriptor.path}: ${response.status}`);
-    const payload = await response.json();
-    state.payloadCache.set(descriptor.path, payload);
-    return payload;
+function visibleStrategyDescriptors() {
+    const selection = {
+        hardware: checkedValues('strategy-hardware-group'),
+        gpu_num: checkedValues('strategy-gpu-num-group')
+    };
+    if (!selection.hardware.length || !selection.gpu_num.length) return [];
+    return filterStrategyDescriptors(state.descriptors, selection);
 }
 
-async function loadSelectedPayloads() {
+function descriptorSelectionKey(descriptors) {
+    return descriptors.map(descriptor => descriptor.path).sort().join('|');
+}
+
+async function loadVisiblePayloads() {
     const requestId = ++state.requestId;
-    const selectedDescriptors = state.descriptors;
+    const selectedDescriptors = visibleStrategyDescriptors();
+    state.loadedDescriptorKey = descriptorSelectionKey(selectedDescriptors);
+    state.points = [];
+    state.pointDescriptors = new WeakMap();
+    state.selectedPointKey = '';
     if (!selectedDescriptors.length) {
-        state.points = [];
-        populateFilters([]);
         renderFiltered();
-        setNote('No strategy dataset is available for this model sequence.');
+        setNote('Select a data-backed hardware and GPU-count pair to load strategy data.');
         return;
     }
 
-    populateFilters([]);
     renderFiltered();
+    setNote(`Loading ${selectedDescriptors.length} strategy dataset(s)...`);
 
     const loaded = await Promise.allSettled(selectedDescriptors.map(async descriptor => ({
         descriptor,
-        payload: await loadPayload(descriptor)
+        decoded: await loadCachedStrategyPayload(state.payloadCache, descriptor, loadStrategyPayload)
     })));
     if (requestId !== state.requestId) return;
 
     const points = [];
+    const pointDescriptors = new WeakMap();
     const failed = [];
     loaded.forEach(result => {
         if (result.status !== 'fulfilled') {
             failed.push(result.reason?.message || String(result.reason));
             return;
         }
-        const { descriptor, payload } = result.value;
-        const rows = decodeCompactRecords(payload);
-        rows.forEach(point => points.push(normalizePoint(point, descriptor)));
+        const { descriptor, decoded } = result.value;
+        decoded.points.forEach(point => {
+            pointDescriptors.set(point, descriptor);
+            points.push(point);
+        });
     });
+    if (failed.length) state.loadedDescriptorKey = '';
     state.points = points;
+    state.pointDescriptors = pointDescriptors;
     populateFilters(points);
     renderFiltered();
     const suffix = failed.length ? ` ${failed.length} payload failed to load.` : '';
-    setNote(points.length ? `Loaded ${formatInt(points.length)} strategy points from all ${selectedDescriptors.length} dataset(s).${suffix}` : `No strategy points found.${suffix}`);
-}
-
-function descriptorMatchesConfig(descriptor, config) {
-    const selectedHardware = Array.isArray(config?.hardware) ? config.hardware.map(String) : [];
-    const selectedGpuNum = String(config?.cardCount || '');
-
-    if (selectedHardware.length) {
-        const descriptorHardware = Array.isArray(descriptor.hardware) ? descriptor.hardware.map(String) : [];
-        if (!descriptorHardware.some(value => selectedHardware.includes(value))) {
-            return false;
-        }
-    }
-    if (selectedGpuNum) {
-        const descriptorGpuNums = Array.isArray(descriptor.gpuNums) ? descriptor.gpuNums.map(String) : [];
-        if (descriptorGpuNums.length && !descriptorGpuNums.includes(selectedGpuNum)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-function descriptorsForConfig(config) {
-    const descriptors = strategyPayloadOptions(state.webInputs, config.model, config.seq);
-    const filtered = descriptors.filter(descriptor => descriptorMatchesConfig(descriptor, config));
-    return filtered.length ? filtered : descriptors;
+    setNote(points.length ? `Loaded ${formatInt(points.length)} strategy points from ${selectedDescriptors.length} selected dataset(s).${suffix}` : `No strategy points found.${suffix}`);
 }
 
 function bindEvents() {
     if (state.bound) return;
     state.bound = true;
-    ['strategy-hardware-group', 'strategy-gpu-num-group', 'strategy-type-group'].forEach(id => {
+    ['strategy-hardware-group', 'strategy-gpu-num-group'].forEach(id => {
+        element(id)?.addEventListener('change', loadVisiblePayloads);
+    });
+    ['strategy-type-group'].forEach(id => {
         element(id)?.addEventListener('change', renderFiltered);
     });
     element('attn-cp-slider')?.addEventListener('input', () => {
@@ -1143,10 +971,6 @@ function bindEvents() {
         state.showLabels = event.target.checked;
         renderFiltered();
     });
-    element('strategy-only-frontier-toggle')?.addEventListener('change', event => {
-        state.showOnlyFrontier = event.target.checked;
-        renderFiltered();
-    });
     window.addEventListener('resize', renderFiltered);
 }
 
@@ -1155,33 +979,55 @@ export function initStrategyParetoPanel(webInputs) {
     bindEvents();
 }
 
+export function resetStrategyDescriptorSelection() {
+    const hardwareContainer = element('strategy-hardware-group');
+    const gpuNumContainer = element('strategy-gpu-num-group');
+    if (hardwareContainer) hardwareContainer.innerHTML = '';
+    if (gpuNumContainer) gpuNumContainer.innerHTML = '';
+    populateFilters(state.points);
+}
+
 export function updateStrategyParetoPanel(config) {
     state.currentConfig = config;
     if (!config?.model || !config?.seq) {
+        state.requestId += 1;
         state.currentConfig = null;
+        state.configKey = '';
         state.descriptors = [];
         state.points = [];
+        state.pointDescriptors = new WeakMap();
+        state.loadedDescriptorKey = '';
+        state.selectedPointKey = '';
         populateFilters([]);
         renderFiltered();
         setNote('Select a model and sequence to load strategy Pareto data.');
         return;
     }
 
-    const hardwareKey = Array.isArray(config.hardware) ? [...config.hardware].sort().join(',') : '';
-    const configKey = `${config.model}|${config.seq}|${config.cardCount || ''}|${hardwareKey}`;
+    const configKey = `${config.model}|${config.seq}`;
     if (configKey === state.configKey) {
-        renderFiltered();
+        const visibleKey = descriptorSelectionKey(visibleStrategyDescriptors());
+        if (visibleKey !== state.loadedDescriptorKey) loadVisiblePayloads();
+        else renderFiltered();
         return;
     }
+    state.requestId += 1;
     state.configKey = configKey;
-    state.descriptors = descriptorsForConfig(config);
+    state.descriptors = strategyPayloadOptions(state.webInputs, config.model, config.seq);
     state.points = [];
+    state.pointDescriptors = new WeakMap();
+    state.loadedDescriptorKey = '';
+    state.selectedPointKey = '';
+    const hardwareContainer = element('strategy-hardware-group');
+    const gpuNumContainer = element('strategy-gpu-num-group');
+    if (hardwareContainer) hardwareContainer.innerHTML = '';
+    if (gpuNumContainer) gpuNumContainer.innerHTML = '';
+    populateFilters([]);
 
     if (!state.descriptors.length) {
-        populateFilters([]);
         renderFiltered();
         setNote('No Pareto, MTP, PD, or A/F strategy JSON is available for this model sequence yet.');
         return;
     }
-    loadSelectedPayloads();
+    loadVisiblePayloads();
 }

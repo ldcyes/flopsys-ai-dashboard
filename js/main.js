@@ -7,8 +7,12 @@ import {
     modelOptions,
     sequenceOptions,
     populateSelectOptions
-} from './data.js';
-import { initStrategyParetoPanel, updateStrategyParetoPanel } from './strategy-pareto.js?v=20260623-tiered-strategy-frontiers';
+} from './data.js?v=display-data-v2';
+import {
+    initStrategyParetoPanel,
+    resetStrategyDescriptorSelection,
+    updateStrategyParetoPanel
+} from './strategy-pareto.js?v=display-data-v2';
 
 let webInputs = null;
 let batchInputOptions = batchOptions;
@@ -62,13 +66,6 @@ function setDefaultSelectValue(selectId) {
     }
 }
 
-function setFirstCheckboxChecked(containerSelector) {
-    const container = document.querySelector(containerSelector);
-    if (!container) return;
-    const firstCheckbox = container.querySelector('input[type="checkbox"]');
-    if (firstCheckbox) firstCheckbox.checked = true;
-}
-
 function selectAllCheckboxes(containerSelector) {
     const container = document.querySelector(containerSelector);
     if (!container) return;
@@ -77,28 +74,13 @@ function selectAllCheckboxes(containerSelector) {
     });
 }
 
-function setPreferredHardwareCheckbox(containerSelector) {
-    const container = document.querySelector(containerSelector);
-    if (!container) return;
-    const inputs = [...container.querySelectorAll('input[type="checkbox"]')];
-    if (!inputs.length) return;
-    const preferred = inputs.find(input => /r300/i.test(input.value))
-        || inputs.find(input => /rubin/i.test(input.value))
-        || inputs.find(input => /b300/i.test(input.value))
-        || inputs[0];
-    inputs.forEach(input => {
-        input.checked = input === preferred;
-    });
-}
-
 function resetStrategyFilterDefaults() {
-    setPreferredHardwareCheckbox('#strategy-hardware-group');
-    setFirstCheckboxChecked('#strategy-gpu-num-group');
     selectAllCheckboxes('#strategy-type-group');
     const strategyColorMode = document.querySelector('input[name="strategy-color-mode"][value="strategy"]');
     if (strategyColorMode) strategyColorMode.checked = true;
     setRangeSliderIndex('strategy-stage-slider', 'strategy-stage-value', 9, Array.from({ length: 10 }, (_, index) => String(index)));
     setRangeSliderIndex('attn-cp-slider', 'attn-cp-value', 3, ['1', '2', '4', '8']);
+    resetStrategyDescriptorSelection();
 }
 
 function generateTPCheckboxes() {
