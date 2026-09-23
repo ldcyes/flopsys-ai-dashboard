@@ -3,7 +3,7 @@
   "domain": "algorithm",
   "source_kind": "working-tree",
   "base_commit": "767ab143f597c07a1ff700d5cdda645159e41021",
-  "snapshot_sha256": "feeec3b5474a979ee9c691938fcbdf6565eb0e8246fe1502eb11c65be93c0e0e",
+  "snapshot_sha256": "55e08a3932a280e873a39fef6d7b9ae3babea59049ed7c8847fe00cafa037b48",
   "source_fingerprints": {
     "llm_perf/native/cost_model_fast/core_single_op.cpp": "ee4939d2544f8eccd987f7e8007da3f10ffc5190f0e24103bc34bc1c903022c5",
     "llm_perf/core/llm_graph.py": "18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9",
@@ -21,7 +21,7 @@
     "llm_perf/tools/deepseek_v41_dspark.py": "81610af909934542b151ee4bbaf33396d91d9b0146de2d7993dca6b3470b1c12",
     "llm_perf/core/deployment_modes.py": "3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159",
     "scripts/evaluate_deployment_modes.py": "745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1",
-    "scripts/build_formula_pages.py": "8382ff5c49230a4356f4d0c23721e7bd9bf05a851b42ca5571a092eabfc42eae",
+    "scripts/build_formula_pages.py": "3999b213759524e77110f6ee62d0beb50eff9eb7ff8c4a8bdc2ff7af3eb7572a",
     "scripts/algorithm_formula_catalog.py": "793ad5a69b105f062bc1036b608be4fecedb70aa76baf25cb308d1c14bf0da74",
     "llm_perf/core/model.py": "e14554c35039d45232401e2977003ac114605b67b7d4fdae53b959745b69b23e",
     "llm_perf/tools/hf_to_llmperf_xlsx.py": "b6532b9c4aa11ff698ba0be2042ccc5b6427d57742731c8d3b0223aca871de4e",

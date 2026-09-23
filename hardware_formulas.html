@@ -2,11 +2,11 @@
 <html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>硬件计算 Formula - Flopsys AI</title><link rel="stylesheet" href="css/styles.css"><link rel="stylesheet" href="css/formulas.css"></head>
 <body><nav class="navbar"><div class="nav-left"><div class="logo">Flopsys AI</div><div class="nav-links">
-<a href="index.html" class="nav-link">Overview</a><a href="leaderboard.html" class="nav-link">Hardware Ranking</a><a href="tco.html" class="nav-link">TCO</a><a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a><a href="deployment_modes.html" class="nav-link">Deployment Modes</a><a href="author.html" class="nav-link">Author</a>
+<a href="index.html" class="nav-link">Overview</a><a href="leaderboard.html" class="nav-link">Hardware Ranking</a><a href="tco.html" class="nav-link">TCO</a><a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a><a href="author.html" class="nav-link">Author</a>
 </div></div></nav><main class="container formula-page"><header><p class="eyebrow">Source-backed equation reference</p><h1>硬件计算 Formula</h1>
 <p>基于本地修复后的 <strong>working-tree</strong> 生成；不是未修改的 main，也不是已通过实测校准的性能承诺。</p>
-<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">ff89466576f7b872faafd6523cc86f66251dc25c27b29f1d8adb894b325f7d3c</code></p>
-<p><a href="algorithm_formulas.html">切换硬件 / LLM 算法公式</a> · <a href="data/hardware_formulas.json">下载 JSON 与源码指纹</a></p>
+<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">4db9756ae6417d7b10dc7a30ad84a0a9ea44dcb0906de2c7aea93f1a66e5b285</code></p>
+<p><a href="deployment_modes.html">V4.1 部署比较</a> · <a href="algorithm_formulas.html">切换硬件 / LLM 算法公式</a> · <a href="data/hardware_formulas.json">下载 JSON 与源码指纹</a></p>
 <p class="formula-limits">范围：数学形状、tile执行成本、混合精度驻留、通信与调度分别列明。DSA/V4参考算子、完整MTP与V4.1 / DSpark独立部署公式已展开；有限输出、共享pool和链路需求单列。GPU与LPUs资源分别计数，模式预算可能不同。融合调度、接受率、后端工作区和队列仍是执行假设，不等于已完成性能校准。</p></header>
 <section class="formula-controls" aria-label="公式筛选"><label for="formula-search">搜索公式、变量或代码<input type="search" id="formula-search" placeholder="top-k / KV / MTP / bandwidth"></label>
 <label for="formula-category">类别<select id="formula-category"><option value="">全部</option><option>互联</option><option>内存</option><option>容量</option><option>执行模型</option><option>算力</option><option>通信</option></select></label><p id="formula-count" aria-live="polite">24 条公式</p></section>
