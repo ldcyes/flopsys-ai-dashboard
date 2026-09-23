@@ -1,0 +1,1282 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM 算法 Formula - Flopsys AI</title><link rel="stylesheet" href="css/styles.css"><link rel="stylesheet" href="css/formulas.css"></head>
+<body><nav class="navbar"><div class="nav-left"><div class="logo">Flopsys AI</div><div class="nav-links">
+<a href="index.html" class="nav-link">Overview</a><a href="leaderboard.html" class="nav-link">Hardware Ranking</a><a href="tco.html" class="nav-link">TCO</a><a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a><a href="deployment_modes.html" class="nav-link">Deployment Modes</a><a href="author.html" class="nav-link">Author</a>
+</div></div></nav><main class="container formula-page"><header><p class="eyebrow">Source-backed equation reference</p><h1>LLM 算法 Formula</h1>
+<p>基于本地修复后的 <strong>working-tree</strong> 生成；不是未修改的 main，也不是已通过实测校准的性能承诺。</p>
+<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">feeec3b5474a979ee9c691938fcbdf6565eb0e8246fe1502eb11c65be93c0e0e</code></p>
+<p><a href="hardware_formulas.html">切换硬件 / LLM 算法公式</a> · <a href="data/algorithm_formulas.json">下载 JSON 与源码指纹</a></p>
+<p class="formula-limits">范围：数学形状、tile执行成本、混合精度驻留、通信与调度分别列明。DSA/V4参考算子、完整MTP与V4.1 / DSpark独立部署公式已展开；有限输出、共享pool和链路需求单列。GPU与LPUs资源分别计数，模式预算可能不同。融合调度、接受率、后端工作区和队列仍是执行假设，不等于已完成性能校准。</p></header>
+<section class="formula-controls" aria-label="公式筛选"><label for="formula-search">搜索公式、变量或代码<input type="search" id="formula-search" placeholder="top-k / KV / MTP / bandwidth"></label>
+<label for="formula-category">类别<select id="formula-category"><option value="">全部</option><option>AFD / PD</option><option>Attention</option><option>MTP</option><option>MoE</option><option>V4.1 / DSpark</option><option>基础算子</option><option>显存</option><option>显式部署</option><option>稀疏与压缩</option><option>验证</option></select></label><p id="formula-count" aria-live="polite">49 条公式</p></section>
+<section id="formula-list"><article class="formula-card" id="algo-gemm" data-category="基础算子">
+<p class="formula-category">基础算子</p><h2>独立矩阵 GEMM 工作量</h2>
+<pre class="equation">MAC = E × H × M × N × K; FLOPs = 2 × MAC; weights = E × H × M × K × b_w</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>native约定M为输出通道、N为token、K为输入通道。H个独立head不能只折入N后丢掉H份权重。逻辑工作量与native tile padding分开核对。</p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/core_single_op.cpp:214</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ee4939d2544f8eccd987f7e8007da3f10ffc5190f0e24103bc34bc1c903022c5</p><pre>
+FastGpuNmkShape llm_cost_gpu_nmk_shape(
+    const char *op_type,
+    int ich,
+    int och,
+    double batch,
+    int expert,
+    int topk,
+    int q_head,
+    int kv_head,
+    int kh,
+    int kw,
+    int h,
+    int w,
+    int stride,
+    int group,
+    int hw_gemm_m,
+    int hw_gemm_n,
+    int hw_gemm_k,
+    int hw_num,
+    int dp,</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-gqa" data-category="Attention">
+<p class="formula-category">Attention</p><h2>GQA / MHA 真实投影</h2>
+<pre class="equation">W_attn = D × [H_q d_q + H_kv d_q + H_kv d_v + H_q d_v]</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>非 MLA 使用 Q/K/V/O 投影；只有 head_dim 或 RoPE 不是 MLA 的判据。普通 QK head_dim 已含旋转子空间，不再加 RoPE。</p>
+<p class="source-location">代码：<code>llm_perf/core/llm_graph.py:801</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9</p><pre>
+def _build_cost_phase_nodes(model: Mapping[str, Any], phase: str, source: Mapping[str, Any] | None = None, *, include_mtp: bool = True) -&gt; list[dict[str, Any]]:
+    &quot;&quot;&quot;
+    Build the macro layer sequence consumed by cost_model for one phase.
+    The generated rows preserve workbook semantics: attention macro nodes, dense/MLP nodes,
+    MoE dispatch/combine rows, and optional MTP rows share the same column schema.
+    &quot;&quot;&quot;
+    is_decode = phase == &quot;decode&quot;
+    token = int(model.get(&quot;query_seq_length&quot;, 1 if is_decode else model[&quot;input_seq_length&quot;]))
+    h = token
+    sparse_layers = max(int(model[&quot;layers&quot;]) - int(model[&quot;dense_layers&quot;]), 0)
+    hidden = int(model[&quot;hidden&quot;])
+    vocab = int(model[&quot;vocab_size&quot;])
+    head_q = int(model[&quot;head_q&quot;])
+    head_kv = int(model[&quot;head_kv&quot;])
+    rope_dim = int(model[&quot;rope_dim&quot;])
+    qk_nope = int(model[&quot;qk_nope_head_dim&quot;])
+    v_head_dim = int(model[&quot;v_head_dim&quot;])
+    compress_q = int(model[&quot;compress_q&quot;])
+    compress_kv = int(model[&quot;compress_kv&quot;])
+    dense_fc_hidden = int(model[&quot;dense_fc_hidden&quot;])</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-attention" data-category="Attention">
+<p class="formula-category">Attention</p><h2>QK + Softmax + SV</h2>
+<pre class="equation">MAC_QK+SV = B × H_q × Q × S_access × (d_qk + d_v)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>此处只列两个矩阵乘法；softmax、访存和通信另计。prefill 的 causal/tile 调度不应直接用整个矩形当作精确有效 FLOPs。</p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/core_single_op.cpp:405</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ee4939d2544f8eccd987f7e8007da3f10ffc5190f0e24103bc34bc1c903022c5</p><pre>
+FastAttentionGpuShape llm_cost_attention_gpu_shape(
+    int batch,
+    int q_head,
+    int kv_head,
+    int q_seq,
+    int kv_seq,
+    int hidden_qk,
+    int hidden_v,
+    int dp,
+    int tp,
+    int cp,
+    int hw_gemm_n,
+    int hw_gemm_k
+) {
+    const int safe_q_head = std::max(q_head, 1);
+    const int safe_kv_head = std::max(kv_head, 1);
+    const int safe_dp = std::max(dp, 1);
+    const int safe_tp = std::max(tp, 1);
+    const int safe_cp = std::max(cp, 1);
+    const int n_tile = std::max(hw_gemm_n, 1);</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mla-decode" data-category="Attention">
+<p class="formula-category">Attention</p><h2>MLA decode：吸收后的维度</h2>
+<pre class="equation">d_QK = c_KV + d_RoPE; d_SV = c_KV; MAC/(B×H_q×Q×S_access) = 2c_KV + d_RoPE</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>DSV3.x c_KV=512、RoPE=64：QK=576，SV=512，共1088。不能重复加64，也不能把decode SV错用为128。维度只在硬件边界对齐一次。</p><p class="example">手算示例：c_KV=512, d_RoPE=64 → <strong>1088 MAC per query/head/KV position</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/kernel_mha.cpp:280</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">430d133859d553ec7f4162f8827ab83e81bc0ef5e445d791bbe11f79373156d1</p><pre>    // Padding is also caller-owned; adding RoPE here counts it twice.
+    const int hidden_size = sm_k_hidden;
+    const int hidden_size_v = sm_v_hidden;
+    const double v_bpe = k_bpe;
+    const int is_flash_attention = sm_kv_seq &gt;= 512 ? 1 : 0;
+    const double kv_load_time = (hbm_bw &gt; 0.0)
+        ? static_cast&lt;double&gt;(sm_batch) * sm_kv_head * sm_kv_seq
+              * (hidden_size * k_bpe + hidden_size_v * v_bpe) / hbm_bw
+        : 0.0;
+    double current_total_min_time = min_time;
+
+    out-&gt;is_flash_attention = is_flash_attention;
+    out-&gt;hidden_size = hidden_size;
+    out-&gt;hidden_size_v = hidden_size_v;
+    out-&gt;sm_kv_head = sm_kv_head;
+    out-&gt;kv_load_time = kv_load_time;
+
+    if (is_flash_attention != 0) {
+        const double q_size = static_cast&lt;double&gt;(sm_batch) * sm_head * sm_q_seq * hidden_size * q_bpe;
+        const double k_size = static_cast&lt;double&gt;(sm_batch) * sm_kv_head * sm_kv_seq * hidden_size * k_bpe;
+        const double v_size = static_cast&lt;double&gt;(sm_batch) * sm_kv_head * sm_kv_seq * hidden_size_v * v_bpe;</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mla-prefill" data-category="Attention">
+<p class="formula-category">Attention</p><h2>MLA prefill：展开后的维度</h2>
+<pre class="equation">d_QK = d_nope + d_RoPE; d_SV = d_v</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>DSV3.x prefill 的数学维度192/128与decode吸收维度576/512不同；不能用单个hidden替代两个阶段。</p>
+<p class="source-location">代码：<code>llm_perf/core/llm_graph.py:801</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9</p><pre>
+def _build_cost_phase_nodes(model: Mapping[str, Any], phase: str, source: Mapping[str, Any] | None = None, *, include_mtp: bool = True) -&gt; list[dict[str, Any]]:
+    &quot;&quot;&quot;
+    Build the macro layer sequence consumed by cost_model for one phase.
+    The generated rows preserve workbook semantics: attention macro nodes, dense/MLP nodes,
+    MoE dispatch/combine rows, and optional MTP rows share the same column schema.
+    &quot;&quot;&quot;
+    is_decode = phase == &quot;decode&quot;
+    token = int(model.get(&quot;query_seq_length&quot;, 1 if is_decode else model[&quot;input_seq_length&quot;]))
+    h = token
+    sparse_layers = max(int(model[&quot;layers&quot;]) - int(model[&quot;dense_layers&quot;]), 0)
+    hidden = int(model[&quot;hidden&quot;])
+    vocab = int(model[&quot;vocab_size&quot;])
+    head_q = int(model[&quot;head_q&quot;])
+    head_kv = int(model[&quot;head_kv&quot;])
+    rope_dim = int(model[&quot;rope_dim&quot;])
+    qk_nope = int(model[&quot;qk_nope_head_dim&quot;])
+    v_head_dim = int(model[&quot;v_head_dim&quot;])
+    compress_q = int(model[&quot;compress_q&quot;])
+    compress_kv = int(model[&quot;compress_kv&quot;])
+    dense_fc_hidden = int(model[&quot;dense_fc_hidden&quot;])</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-dsa-access" data-category="稀疏与压缩">
+<p class="formula-category">稀疏与压缩</p><h2>DSV3.2 top-k 减少 gather 访存</h2>
+<pre class="equation">S_access = min(S, k); main KV gather ≈ B × L × S_access × (c_KV + d_RoPE) × b</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>这里确实只 gather top-k 个主 KV。indexer仍需扫描全量轻量索引键；缓存驻留和PD移交不随top-k同比缩小。实际分页、重复读、量化scale和cache复用由kernel决定。</p>
+<p class="source-location">代码：<code>llm_perf/core/llm_graph.py:777</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9</p><pre>
+def _effective_kv_seq(base_kv_seq: int, kind: str, profile: Mapping[str, Any]) -&gt; int:
+    rates = profile.get(&quot;rates&quot;, {})
+    sliding_window = int(profile.get(&quot;sliding_window&quot;, 0) or 0)
+    if kind == &quot;hca&quot;:
+        rate = max(int(rates.get(&quot;hca&quot;, 128) or 128), 1)
+        # A compressed entry becomes causal only after its full source block
+        # is complete. Local and compressed branches are both attended.
+        return max(1, min(base_kv_seq, sliding_window) + base_kv_seq // rate)
+    if kind == &quot;csa&quot;:
+        rate = max(int(rates.get(&quot;csa&quot;, 4) or 4), 1)
+        compressed = base_kv_seq // rate
+        index_topk = int(profile.get(&quot;index_topk&quot;, 0) or 0)
+        if index_topk &gt; 0:
+            compressed = min(compressed, index_topk)
+        return max(1, min(base_kv_seq, sliding_window) + compressed)
+    if kind == &quot;mla&quot; and bool(profile.get(&quot;dsa_indexer&quot;, False)):
+        index_topk = int(profile.get(&quot;index_topk&quot;, 0) or 0)
+        if index_topk &gt; 0:
+            return max(1, min(base_kv_seq, index_topk))
+    if kind == &quot;sliding&quot; and sliding_window &gt; 0:</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-dsa-index" data-category="稀疏与压缩">
+<p class="formula-category">稀疏与压缩</p><h2>DSA 全 heads 打分后统一 top-k</h2>
+<pre class="equation">score[b,q,s] = scale_K[s] × Σ_h weight[b,q,h] × ReLU(Q[b,q,h]·K[b,s]); MAC=BQSHd</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>V3.2 每 rank 使用完整 index_n_heads，不按 TP 除。点积、ReLU、加权与 head 归约融合，仅写 B×Q×S 个 FP32 分数，再每 query 一次 top-k。CSA则按TP分heads并先all-reduce统一分数。参考索引历史在CP间复制；主KV可独立CP分片。</p>
+<p class="source-location">代码：<code>llm_perf/core/reference_attention.py:175</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ba84a630275c980231a81d7da1e1910e267cf1ed67c967e5ce19df6b66d276c5</p><pre>
+def _indexer(model, source, phase):
+    config = _config(model)
+    family = &quot;dsa&quot; if source.get(&quot;attention_type&quot;) == &quot;dsa&quot; or source.get(&quot;component&quot;) == &quot;dsa_indexer&quot; else &quot;csa&quot;
+    replicated = family == &quot;dsa&quot;
+    hidden = int(model[&quot;hidden&quot;])
+    heads = int(source.get(&quot;index_n_heads&quot;) or config.get(&quot;index_n_heads&quot;) or 1)
+    dim = int(source.get(&quot;index_head_dim&quot;) or config.get(&quot;index_head_dim&quot;) or 128)
+    rope = min(int(config.get(&quot;rope_head_dim&quot;) or model.get(&quot;rope_dim&quot;) or 0), dim)
+    topk = int(source.get(&quot;index_topk&quot;) or config.get(&quot;index_topk&quot;) or 1)
+    end = int(model.get(&quot;input_seq_length&quot;, 1)) + (int(model.get(&quot;output_seq_length&quot;, 0)) if phase == &quot;decode&quot; else 0)
+    keys = end if replicated else end // max(int(source.get(&quot;compress_rate&quot;) or 4), 1)
+    base = dict(source, index_n_heads=heads, index_head_dim=dim, index_topk=topk,
+                effective_kv_seq=keys, gpu_config_tuning=&quot;attention_replicated&quot; if replicated else &quot;attn&quot;)
+    root = str(source[&quot;NN name&quot;])
+    rows = auxiliary_projection_rows(model, base, root + &quot;_QUERY&quot;, &quot;index_query_projection&quot;,
+                     int(config.get(&quot;q_lora_rank&quot;) or model.get(&quot;compress_q&quot;) or hidden), heads * dim, family, replicated=replicated)
+    rows.append(_make(base, root + &quot;_QUERY_TRANSFORM&quot;, &quot;index_query_transform&quot;, family=family,
+        c_in=dim, c_out=rope, index_head_dim=dim, q_head=heads,
+        head_ownership=&quot;replicated&quot; if replicated else &quot;partitioned&quot;, o_bpe=1 if replicated else 2,
+        output_precision=&quot;fp8&quot; if replicated else &quot;bf16&quot;,</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-dsa-projections" data-category="稀疏与压缩">
+<p class="formula-category">稀疏与压缩</p><h2>DSA 投影与 Q/K 变换</h2>
+<pre class="equation">MAC_proj = BQ(c_Q H_i d_i + D d_i + D H_i); Q=RoPE→Hadamard→FP8; K=LayerNorm→RoPE→Hadamard→FP8</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>官方FP8配置的Q/K投影使用FP8 E4M3权重及动态量化输入，FP32累加后输出BF16；可显式选择BF16部署。weights_proj参考运行时为FP32；K LayerNorm包含gamma/beta。投影输入量化与后续Q/K变换分别计费，FP8索引缓存每128元素一份FP32 scale；gather不删除未选中历史。</p>
+<p class="source-location">代码：<code>llm_perf/core/reference_attention.py:175</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ba84a630275c980231a81d7da1e1910e267cf1ed67c967e5ce19df6b66d276c5</p><pre>
+def _indexer(model, source, phase):
+    config = _config(model)
+    family = &quot;dsa&quot; if source.get(&quot;attention_type&quot;) == &quot;dsa&quot; or source.get(&quot;component&quot;) == &quot;dsa_indexer&quot; else &quot;csa&quot;
+    replicated = family == &quot;dsa&quot;
+    hidden = int(model[&quot;hidden&quot;])
+    heads = int(source.get(&quot;index_n_heads&quot;) or config.get(&quot;index_n_heads&quot;) or 1)
+    dim = int(source.get(&quot;index_head_dim&quot;) or config.get(&quot;index_head_dim&quot;) or 128)
+    rope = min(int(config.get(&quot;rope_head_dim&quot;) or model.get(&quot;rope_dim&quot;) or 0), dim)
+    topk = int(source.get(&quot;index_topk&quot;) or config.get(&quot;index_topk&quot;) or 1)
+    end = int(model.get(&quot;input_seq_length&quot;, 1)) + (int(model.get(&quot;output_seq_length&quot;, 0)) if phase == &quot;decode&quot; else 0)
+    keys = end if replicated else end // max(int(source.get(&quot;compress_rate&quot;) or 4), 1)
+    base = dict(source, index_n_heads=heads, index_head_dim=dim, index_topk=topk,
+                effective_kv_seq=keys, gpu_config_tuning=&quot;attention_replicated&quot; if replicated else &quot;attn&quot;)
+    root = str(source[&quot;NN name&quot;])
+    rows = auxiliary_projection_rows(model, base, root + &quot;_QUERY&quot;, &quot;index_query_projection&quot;,
+                     int(config.get(&quot;q_lora_rank&quot;) or model.get(&quot;compress_q&quot;) or hidden), heads * dim, family, replicated=replicated)
+    rows.append(_make(base, root + &quot;_QUERY_TRANSFORM&quot;, &quot;index_query_transform&quot;, family=family,
+        c_in=dim, c_out=rope, index_head_dim=dim, q_head=heads,
+        head_ownership=&quot;replicated&quot; if replicated else &quot;partitioned&quot;, o_bpe=1 if replicated else 2,
+        output_precision=&quot;fp8&quot; if replicated else &quot;bf16&quot;,</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-reference-precision" data-category="基础算子">
+<p class="formula-category">基础算子</p><h2>参考辅助投影的独立精度策略</h2>
+<pre class="equation">FP8 operands → FP32 accumulation → BF16 output; weight/input/output/cache precision resolve independently</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>默认official_mixed_v1：官方FP8配置的DSA Q/K、V4 index-query和MTP融合投影采用FP8 E4M3；显式bf16_deployment_v1或reference_dtype=bf16保留BF16部署。DSA物理scale为FP32，V4为E8M0。DSA scoring-weight投影仍为FP32，V4对应投影为BF16；compressor、norm归约与mHC声明的FP32计算/参数保持独立。已知DeepSeek无dtype时默认FP8，未声明精度的通用旧模型回退BF16；全局专家FP4不意味着辅助投影FP4。V4 QAT缓存仍物理存储BF16。</p>
+<p class="source-location">代码：<code>llm_perf/core/reference_precision.py:25</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">43188049c144aae616e489413bce794429a3603e2f46f6a7fde11f4e3050f693</p><pre>
+def resolve_reference_precision(model, *, family=None, role=None):
+    &quot;&quot;&quot;Resolve storage, operands, accumulation and output independently.
+
+    Explicit reference dtype/deployment settings win over checkpoint metadata.
+    Generic FP16/BF16 configurations remain BF16 unless HF metadata declares
+    FP8. Global FP4/NVFP4 describe packed main matrices, never these auxiliaries.
+    &quot;&quot;&quot;
+    settings = _settings(model)
+    profile = settings.get(&quot;reference_projection_policy&quot;, &quot;official_mixed_v1&quot;)
+    if profile not in {&quot;official_mixed_v1&quot;, &quot;bf16_deployment_v1&quot;}:
+        raise ValueError(f&quot;Unknown reference projection policy: {profile}&quot;)
+    known_reference = &quot;deepseek&quot; in str(settings.get(&quot;model_type&quot;, &quot;&quot;)).lower()
+    family = family or (&quot;csa&quot; if &quot;deepseek_v4&quot; in str(settings.get(&quot;model_type&quot;, &quot;&quot;)).lower() else &quot;dsa&quot;)
+    v4 = family in {&quot;csa&quot;, &quot;v4&quot;, &quot;deepseek_v4&quot;, &quot;compressor&quot;, &quot;mhc&quot;}
+    aliases = {&quot;float16&quot;: &quot;bf16&quot;, &quot;fp16&quot;: &quot;bf16&quot;, &quot;bfloat16&quot;: &quot;bf16&quot;,
+               &quot;float8_e4m3fn&quot;: &quot;fp8&quot;, &quot;torch.float8_e4m3fn&quot;: &quot;fp8&quot;}
+    reference_dtype = settings.get(&quot;reference_dtype&quot;)
+    if reference_dtype is not None:
+        reference_dtype = aliases.get(str(reference_dtype).lower(), str(reference_dtype).lower())
+        if reference_dtype not in {&quot;fp8&quot;, &quot;bf16&quot;}:</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 2</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/kernel.py" rel="noreferrer">参考来源 3</a> </p></article><article class="formula-card" id="algo-fp8-weight-storage" data-category="显存">
+<p class="formula-category">显存</p><h2>FP8 权重的二维分块与 TP 驻留</h2>
+<pre class="equation">W_rank = C_in_local × C_out_local + ceil(C_in_local/128) × ceil(C_out_local/128) × s_w</pre>
+<p class="variables">C_in_local/C_out_local：本rank输入/输出通道；列分片C_out_local=ceil(C_out/TP)，行分片C_in_local=ceil(C_in/TP)，复制保持原形状；s_w=4（DSA FP32）或1（V4 E8M0）bytes。</p><p>先按TP所有权取本rank逻辑矩阵，再独立对两个轴向上取整，尾块仍占完整scale；不能用ceil(元素总数/16384)替代二维块数。DSA索引Q/K与MTP融合权重复制；V4 index-query按列分片。BF16部署每权重2字节且没有FP8 scale。</p><p class="example">手算示例：DSA格式通用列分片示例：C_in=129,C_out=130,TP=2,s_w=4 → <strong>8393 bytes/rank</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/reference_precision.py:74</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">43188049c144aae616e489413bce794429a3603e2f46f6a7fde11f4e3050f693</p><pre>
+def reference_weight_bytes(model, cin, cout, *, family=None, role=None, tp=1, shard=&quot;replicated&quot;):
+    &quot;&quot;&quot;Exact most-loaded-rank tensor bytes, including each 2D scale tail.&quot;&quot;&quot;
+    if shard not in {&quot;replicated&quot;, &quot;column&quot;, &quot;row&quot;}:
+        raise ValueError(f&quot;Unknown reference weight sharding: {shard}&quot;)
+    cin, cout, tp = int(cin), int(cout), int(tp)
+    if min(cin, cout, tp) &lt; 1:
+        raise ValueError(&quot;Reference weight dimensions and TP must be positive&quot;)
+    if shard == &quot;column&quot;:
+        cout = ceil(cout / tp)
+    elif shard == &quot;row&quot;:
+        cin = ceil(cin / tp)
+    policy = resolve_reference_precision(model, family=family, role=role)
+    return cin * cout * policy[&quot;weight_bpe&quot;] + ceil(cin / 128) * ceil(cout / 128) * policy[&quot;weight_scale_bpe&quot;]</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 2</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/kernel.py" rel="noreferrer">参考来源 3</a> </p></article><article class="formula-card" id="algo-compressor" data-category="稀疏与压缩">
+<p class="formula-category">稀疏与压缩</p><h2>完整 KV/gate Compressor</h2>
+<pre class="equation">MAC_proj=2BQD(c·d); blocks=floor((S+Q)/r)−floor(S/r); C=QuantDequant(RoPE(RMSNorm(Σ_t softmax_t(gate+APE)·KV)))</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>KV和gate为独立FP32投影，所有新token均执行；完整块才池化。r=4时c=2，含双窗口重叠和状态滚动；prefill仅写最终保留状态。index compressor额外Hadamard。官方量化为QAT模拟，缓存实际BF16，不能按packed FP4减少容量。</p>
+<p class="source-location">代码：<code>llm_perf/core/reference_attention.py:127</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ba84a630275c980231a81d7da1e1910e267cf1ed67c967e5ce19df6b66d276c5</p><pre>
+def _compressor(model, source, phase, *, index=False):
+    config = _config(model)
+    ratio = max(int(source.get(&quot;compress_rate&quot;) or 4), 1)
+    overlap = 2 if ratio == 4 else 1
+    width = int(source.get(&quot;index_head_dim&quot;) or config.get(&quot;index_head_dim&quot;) or 128) if index else int(
+        config.get(&quot;head_dim&quot;) or model.get(&quot;v_head_dim&quot;) or source[&quot;c_out&quot;])
+    hidden = int(model[&quot;hidden&quot;])
+    rope = min(int(config.get(&quot;rope_head_dim&quot;) or model.get(&quot;rope_dim&quot;) or 0), width)
+    tokens = max(int(source.get(&quot;h&quot;, 1)) * int(source.get(&quot;w&quot;, 1)), 1)
+    end = int(model.get(&quot;input_seq_length&quot;, tokens)) + (int(model.get(&quot;output_seq_length&quot;, 0)) if phase == &quot;decode&quot; else 0)
+    start = int(model.get(&quot;context_start&quot;, max(end - tokens, 0) if phase == &quot;decode&quot; else 0))
+    blocks = end // ratio - start // ratio
+    prefix = &quot;index_compressor&quot; if index else &quot;compressor&quot;
+    root = str(source[&quot;NN name&quot;]) + (&quot;_INDEX_COMPRESSOR&quot; if index else &quot;&quot;)
+    base = dict(source, compress_rate=ratio, overlap_factor=overlap, completed_blocks=blocks,
+                index_head_dim=width, effective_kv_seq=end,
+                gpu_config_tuning=&quot;attention_replicated&quot;, head_ownership=&quot;replicated&quot;)
+    primitive = &quot;CompressorReference&quot; if phase == &quot;decode&quot; else &quot;CompressorPrefillReference&quot;
+    rows = [_input_cast(base, root + &quot;_FP32_INPUT&quot;, prefix + &quot;_input_cast&quot;, hidden, &quot;compressor&quot;),
+            _project(base, root + &quot;_KV&quot;, prefix + &quot;_kv_projection&quot;, hidden, overlap * width, &quot;compressor&quot;, weight_precision=&quot;fp32&quot;, fp32_compute=True),</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-mhc" data-category="基础算子">
+<p class="formula-category">基础算子</p><h2>mHC 学习投影与迭代归一化</h2>
+<pre class="equation">p=m²+2m; MAC_projection=BQ(mD)p; mixes=W·flatten(x)×rsqrt(mean(x²)+ε); H_res=Sinkhorn(mixes_res)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>attention/FFN两处各有一次pre/post：sigmoid产生pre/post gates，残差矩阵执行初始softmax和列归一化、其后hc_sinkhorn_iters−1轮行列归一化。迭代矩阵留在片上，计算随轮数增长但不虚构每轮HBM读写。</p>
+<p class="source-location">代码：<code>llm_perf/core/reference_attention.py:236</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ba84a630275c980231a81d7da1e1910e267cf1ed67c967e5ce19df6b66d276c5</p><pre>
+def _mhc(model, source):
+    config = _config(model)
+    streams = max(int(source.get(&quot;mhc_streams&quot;) or config.get(&quot;hc_mult&quot;) or 1), 1)
+    iters = int(config.get(&quot;hc_sinkhorn_iters&quot;, 20))
+    if iters &lt; 1:
+        raise ValueError(&quot;hc_sinkhorn_iters must be positive&quot;)
+    hidden = int(model[&quot;hidden&quot;])
+    mixed = streams * streams + 2 * streams
+    root = str(source[&quot;NN name&quot;])
+    base = dict(source, mhc_streams=streams, sinkhorn_iters=iters,
+                gpu_config_tuning=&quot;ffn_replicated&quot; if source.get(&quot;component&quot;) == &quot;mhc_ffn&quot; else &quot;attention_replicated&quot;)
+    if not str(source.get(&quot;attention_role&quot;, &quot;&quot;)).endswith(&quot;stream_collapse&quot;):
+        return [_make(base, root + &quot;_POST&quot;, &quot;mhc_post_mix&quot;, family=&quot;mhc&quot;, c_in=hidden, c_out=hidden,
+            semantics=[_semantic(&quot;stream_residual_mix&quot;, [&quot;B&quot;, &quot;T&quot;, streams, hidden],
+                                &quot;y_i=post_i*x + sum_j(comb_ij*residual_j); B*T*D*(2*H*H+H) operations&quot;)])]
+    return [_input_cast(base, root + &quot;_FP32_INPUT&quot;, &quot;mhc_input_cast&quot;, streams * hidden, &quot;mhc&quot;),
+            _project(base, root + &quot;_PROJECTION&quot;, &quot;mhc_projection&quot;, streams * hidden, mixed, &quot;mhc&quot;, weight_precision=&quot;fp32&quot;, fp32_compute=True),
+            _make(base, root + &quot;_RMS_SCALE&quot;, &quot;mhc_rms_scale&quot;, family=&quot;mhc&quot;, c_in=hidden, c_out=mixed,
+                b_bpe=4, o_bpe=4, precision=&quot;fp32&quot;, semantics=[_semantic(&quot;rms_scale&quot;, [&quot;B&quot;, &quot;T&quot;, mixed],
+                    &quot;mixes=(flatten(x) @ W^T)*rsqrt(mean(x^2)+eps); B*T*(2*H*D+mix_dim) operations + B*T rsqrt&quot;)]),</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-hc-head" data-category="基础算子">
+<p class="formula-category">基础算子</p><h2>V4 主模型与 draft 的最终 HC head</h2>
+<pre class="equation">MAC=BQ(mD)m; pre=sigmoid((W_head·flatten(x))×RMS_scale×scale+base)+ε; y=Σ_i pre_i x_i</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>输出前还有独立学习投影、FP32变换与加权stream聚合，不是普通RMSNorm可以替代。此处无Sinkhorn残差矩阵。主模型和draft分别有HC head；共享词表head不意味着共享这些额外参数。</p>
+<p class="source-location">代码：<code>llm_perf/core/reference_attention.py:266</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ba84a630275c980231a81d7da1e1910e267cf1ed67c967e5ce19df6b66d276c5</p><pre>
+def expand_hc_head(model: Mapping, source: Mapping) -&gt; list[dict]:
+    &quot;&quot;&quot;Cost the final learned HC collapse before the output RMSNorm/head.
+
+    ``source`` supplies the output boundary&#x27;s token geometry and component.
+    The head owns H*(H*D) FP32 projection weights, H affine biases and one
+    shared scale. It has only pre-gates, unlike a block&#x27;s Sinkhorn mixing.
+    The flattened FP32 input remains live through the weighted reduction.
+    &quot;&quot;&quot;
+    config = _config(model)
+    hidden = int(model[&quot;hidden&quot;])
+    streams = max(int(source.get(&quot;mhc_streams&quot;) or config.get(&quot;hc_mult&quot;)
+                      or config.get(&quot;mhc_streams&quot;) or 1), 1)
+    root = str(source[&quot;NN name&quot;]) + &quot;_HC_HEAD&quot;
+    base = dict(source, mhc_streams=streams, layer=1,
+                gpu_config_tuning=&quot;attention_replicated&quot;)
+    return [
+        _input_cast(base, root + &quot;_FP32_INPUT&quot;, &quot;mhc_head_input_cast&quot;, streams * hidden, &quot;mhc&quot;),
+        _project(base, root + &quot;_PROJECTION&quot;, &quot;mhc_head_projection&quot;, streams * hidden,
+                 streams, &quot;mhc&quot;, weight_precision=&quot;fp32&quot;, fp32_compute=True),
+        _make(base, root + &quot;_RMS_SCALE&quot;, &quot;mhc_head_rms_scale&quot;, family=&quot;mhc&quot;,</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-hca-access" data-category="稀疏与压缩">
+<p class="formula-category">稀疏与压缩</p><h2>V4 HCA：局部窗口 + 重压缩历史</h2>
+<pre class="equation">S_access = min(S,W) + floor(S/r)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>只有完整压缩块变为可读条目。局部与压缩是两个分支，不能省略W，也不对来源位置重叠做去重；空访问在当前cost row中有最小1占位。</p>
+<p class="source-location">代码：<code>llm_perf/core/llm_graph.py:777</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9</p><pre>
+def _effective_kv_seq(base_kv_seq: int, kind: str, profile: Mapping[str, Any]) -&gt; int:
+    rates = profile.get(&quot;rates&quot;, {})
+    sliding_window = int(profile.get(&quot;sliding_window&quot;, 0) or 0)
+    if kind == &quot;hca&quot;:
+        rate = max(int(rates.get(&quot;hca&quot;, 128) or 128), 1)
+        # A compressed entry becomes causal only after its full source block
+        # is complete. Local and compressed branches are both attended.
+        return max(1, min(base_kv_seq, sliding_window) + base_kv_seq // rate)
+    if kind == &quot;csa&quot;:
+        rate = max(int(rates.get(&quot;csa&quot;, 4) or 4), 1)
+        compressed = base_kv_seq // rate
+        index_topk = int(profile.get(&quot;index_topk&quot;, 0) or 0)
+        if index_topk &gt; 0:
+            compressed = min(compressed, index_topk)
+        return max(1, min(base_kv_seq, sliding_window) + compressed)
+    if kind == &quot;mla&quot; and bool(profile.get(&quot;dsa_indexer&quot;, False)):
+        index_topk = int(profile.get(&quot;index_topk&quot;, 0) or 0)
+        if index_topk &gt; 0:
+            return max(1, min(base_kv_seq, index_topk))
+    if kind == &quot;sliding&quot; and sliding_window &gt; 0:</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-csa-access" data-category="稀疏与压缩">
+<p class="formula-category">稀疏与压缩</p><h2>V4 CSA：局部窗口 + 压缩 top-k</h2>
+<pre class="equation">S_access = min(S,W) + min(floor(S/r), k)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>CSA选中的位置来自压缩历史。不同层压缩率分别生成cost rows，不能用全模型同一个有效长度。</p>
+<p class="source-location">代码：<code>llm_perf/core/llm_graph.py:777</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9</p><pre>
+def _effective_kv_seq(base_kv_seq: int, kind: str, profile: Mapping[str, Any]) -&gt; int:
+    rates = profile.get(&quot;rates&quot;, {})
+    sliding_window = int(profile.get(&quot;sliding_window&quot;, 0) or 0)
+    if kind == &quot;hca&quot;:
+        rate = max(int(rates.get(&quot;hca&quot;, 128) or 128), 1)
+        # A compressed entry becomes causal only after its full source block
+        # is complete. Local and compressed branches are both attended.
+        return max(1, min(base_kv_seq, sliding_window) + base_kv_seq // rate)
+    if kind == &quot;csa&quot;:
+        rate = max(int(rates.get(&quot;csa&quot;, 4) or 4), 1)
+        compressed = base_kv_seq // rate
+        index_topk = int(profile.get(&quot;index_topk&quot;, 0) or 0)
+        if index_topk &gt; 0:
+            compressed = min(compressed, index_topk)
+        return max(1, min(base_kv_seq, sliding_window) + compressed)
+    if kind == &quot;mla&quot; and bool(profile.get(&quot;dsa_indexer&quot;, False)):
+        index_topk = int(profile.get(&quot;index_topk&quot;, 0) or 0)
+        if index_topk &gt; 0:
+            return max(1, min(base_kv_seq, index_topk))
+    if kind == &quot;sliding&quot; and sliding_window &gt; 0:</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-dsa-resident" data-category="显存">
+<p class="formula-category">显存</p><h2>DSA 完整缓存驻留</h2>
+<pre class="equation">M_request = L × S × [c_KV×b_latent+d_RoPE×b_RoPE+d_index×b_index+4×ceil(d_index/128)]</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>top-k只影响访问，不删除未选中的历史KV。例中主KV选1字节部署精度，index为FP8并计每128元素一份FP32 scale；不含TP/CP分片时给出整请求容量。</p><p class="example">手算示例：S=32768, L=61, c_KV=512, RoPE=64, index=128, b=1, index_scale=4 B/token → <strong>1415184384 bytes/request</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/model_memory.py:166</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc67e4206b016863b78f3fd63ae3e6ef55d416497e329e277ccbac2601e539ae</p><pre>
+def persistent_kv_bytes(model, layers=None, *, seq_len=None, gpu_config=None):
+    &quot;&quot;&quot;Resident cache per request, optionally on the most-loaded GPU stage.
+
+    MLA latent state is replicated across TP. Ordinary KV heads shard with
+    ceil(heads/TP). CP divides sequence state. PP uses a conservative worst-stage
+    bound when the exact heterogeneous stage schedule is not available.
+    &quot;&quot;&quot;
+    seq = max(int(seq_len if seq_len is not None else
+                  _value(model, &quot;input_seq_length&quot;) + _value(model, &quot;output_seq_length&quot;)), 0)
+    mapping = gpu_config or {}
+    tp = max(int(mapping.get(&quot;attn_tp&quot;, 1)), 1)
+    cp = max(int(mapping.get(&quot;attn_cp&quot;, mapping.get(&quot;attn_ep&quot;, 1))), 1)
+    pp = max(int(mapping.get(&quot;pp&quot;, 1)), 1)
+    bpe = float(_value(model, &quot;kv_cache_bpe&quot;, default=1))
+    per_layer = []
+    for spec in cache_specs(model, layers):
+        kind = str(spec.get(&quot;kind&quot;, &quot;mla&quot;)).lower()
+        heads = max(int(spec.get(&quot;kv_heads&quot;, 1)), 1)
+        width = float(spec.get(&quot;head_dim&quot;, 0))
+        index_dim = float(spec.get(&quot;index_dim&quot;, 0))</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-v4-resident" data-category="显存">
+<p class="formula-category">显存</p><h2>V4 主缓存与索引缓存</h2>
+<pre class="equation">M_request = Σ_l [(min(S,W_l)+floor(S/r_l))d_l b_KV + floor(S/r_l)d_index,l b_index + M_state,l]</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>共享 K=V 只存一份。CSA仍保存全部压缩条目，而不是只有选中的top-k；HCA无索引器。此容量与sparse gather长度独立。</p>
+<p class="source-location">代码：<code>llm_perf/core/model_memory.py:166</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc67e4206b016863b78f3fd63ae3e6ef55d416497e329e277ccbac2601e539ae</p><pre>
+def persistent_kv_bytes(model, layers=None, *, seq_len=None, gpu_config=None):
+    &quot;&quot;&quot;Resident cache per request, optionally on the most-loaded GPU stage.
+
+    MLA latent state is replicated across TP. Ordinary KV heads shard with
+    ceil(heads/TP). CP divides sequence state. PP uses a conservative worst-stage
+    bound when the exact heterogeneous stage schedule is not available.
+    &quot;&quot;&quot;
+    seq = max(int(seq_len if seq_len is not None else
+                  _value(model, &quot;input_seq_length&quot;) + _value(model, &quot;output_seq_length&quot;)), 0)
+    mapping = gpu_config or {}
+    tp = max(int(mapping.get(&quot;attn_tp&quot;, 1)), 1)
+    cp = max(int(mapping.get(&quot;attn_cp&quot;, mapping.get(&quot;attn_ep&quot;, 1))), 1)
+    pp = max(int(mapping.get(&quot;pp&quot;, 1)), 1)
+    bpe = float(_value(model, &quot;kv_cache_bpe&quot;, default=1))
+    per_layer = []
+    for spec in cache_specs(model, layers):
+        kind = str(spec.get(&quot;kind&quot;, &quot;mla&quot;)).lower()
+        heads = max(int(spec.get(&quot;kv_heads&quot;, 1)), 1)
+        width = float(spec.get(&quot;head_dim&quot;, 0))
+        index_dim = float(spec.get(&quot;index_dim&quot;, 0))</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-v4-state" data-category="显存">
+<p class="formula-category">显存</p><h2>V4 compressor 常驻状态</h2>
+<pre class="equation">M_state = 2 × c_overlap² × r × (d_KV+d_index) × 4; c_overlap=2 if r=4 else 1</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>选择DeepSeek官方参考inference/model.py的固定FP32 KV/score缓冲分配。HF的动态tail实现可能更小，可显式覆盖compressor_state_bytes。不是所有后端通用的最小状态量。</p>
+<p class="source-location">代码：<code>llm_perf/core/model_memory.py:112</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc67e4206b016863b78f3fd63ae3e6ef55d416497e329e277ccbac2601e539ae</p><pre>    overlap = 2 if rate == 4 else 1
+    states = 2 * overlap**2 * rate * (float(spec.get(&quot;head_dim&quot;, 0))
+                                     + float(spec.get(&quot;index_dim&quot;, 0))) * 4
+    return float(spec.get(&quot;compressor_state_bytes&quot;, states))
+
+
+def cache_entry_bytes(model, spec, gpu_config=None, *, local=False):
+    &quot;&quot;&quot;Physical bytes per stored position, before CP sequence ownership.
+
+    Latent/shared KV and indexer state replicate under TP. Ordinary KV heads
+    use whole-head sharding. Quantization scales are explicit bytes per entry.
+    Compressed and local V4 caches may have independent storage precision.
+    &quot;&quot;&quot;
+    mapping = gpu_config or {}
+    tp = max(int(mapping.get(&quot;attn_tp&quot;, 1)), 1)
+    bpe = float(_value(model, &quot;kv_cache_bpe&quot;, default=1))
+    kind = str(spec.get(&quot;kind&quot;, &quot;mla&quot;)).lower()
+    heads = max(int(spec.get(&quot;kv_heads&quot;, 1)), 1)
+    width = float(spec.get(&quot;head_dim&quot;, 0))
+    index_dim = float(spec.get(&quot;index_dim&quot;, 0))
+    scale = float(spec.get(&quot;scale_bytes_per_token&quot;, 0))</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-cache-parallel" data-category="显存">
+<p class="formula-category">显存</p><h2>KV 的 TP / CP / PP 所有权</h2>
+<pre class="equation">GQA local_heads=ceil(H_KV/TP); MLA latent TP replicated; local_context=ceil(S/CP)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>PP使用最重ceil(L/PP)层的保守上界；V4局部窗口与固定compressor状态保守保留，压缩历史按CP整数分片。没有把不完整token分成半个cache槽。</p>
+<p class="source-location">代码：<code>llm_perf/core/model_memory.py:166</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc67e4206b016863b78f3fd63ae3e6ef55d416497e329e277ccbac2601e539ae</p><pre>
+def persistent_kv_bytes(model, layers=None, *, seq_len=None, gpu_config=None):
+    &quot;&quot;&quot;Resident cache per request, optionally on the most-loaded GPU stage.
+
+    MLA latent state is replicated across TP. Ordinary KV heads shard with
+    ceil(heads/TP). CP divides sequence state. PP uses a conservative worst-stage
+    bound when the exact heterogeneous stage schedule is not available.
+    &quot;&quot;&quot;
+    seq = max(int(seq_len if seq_len is not None else
+                  _value(model, &quot;input_seq_length&quot;) + _value(model, &quot;output_seq_length&quot;)), 0)
+    mapping = gpu_config or {}
+    tp = max(int(mapping.get(&quot;attn_tp&quot;, 1)), 1)
+    cp = max(int(mapping.get(&quot;attn_cp&quot;, mapping.get(&quot;attn_ep&quot;, 1))), 1)
+    pp = max(int(mapping.get(&quot;pp&quot;, 1)), 1)
+    bpe = float(_value(model, &quot;kv_cache_bpe&quot;, default=1))
+    per_layer = []
+    for spec in cache_specs(model, layers):
+        kind = str(spec.get(&quot;kind&quot;, &quot;mla&quot;)).lower()
+        heads = max(int(spec.get(&quot;kv_heads&quot;, 1)), 1)
+        width = float(spec.get(&quot;head_dim&quot;, 0))
+        index_dim = float(spec.get(&quot;index_dim&quot;, 0))</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mlp-weight" data-category="显存">
+<p class="formula-category">显存</p><h2>模型权重：dense/shared/routed</h2>
+<pre class="equation">W_dense=3DF_dense; W_expert=3DF_moe; E_local=ceil(E/EP); W_MoE/GPU=(E_local+E_shared)W_expert/TP_F + DE</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>SwiGLU三矩阵，按真实D/F/L计算，另含attention、norm、embedding、head、router及参考mixed参数。shared专家不按EP切分；声明的attention/per-weight量化scale计入驻留。allocator碎片和backend工作区另列；容量保留10%余量。</p>
+<p class="source-location">代码：<code>llm_perf/core/model_memory.py:210</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc67e4206b016863b78f3fd63ae3e6ef55d416497e329e277ccbac2601e539ae</p><pre>
+def model_weight_bytes(model, gpu_config=None):
+    &quot;&quot;&quot;Weight residency from dimensions, not fixed DeepSeek parameter constants.&quot;&quot;&quot;
+    mapping = gpu_config or {}
+    atp = max(int(mapping.get(&quot;attn_tp&quot;, 1)), 1)
+    ftp = max(int(mapping.get(&quot;ffn_tp&quot;, 1)), 1)
+    ep = max(int(mapping.get(&quot;ffn_ep&quot;, 1)), 1)
+    pp = max(int(mapping.get(&quot;pp&quot;, 1)), 1)
+    bpe = _weight_number(_value(model, &quot;weight_bpe&quot;, default=2), &quot;bpe&quot;, positive=True)
+    specs = getattr(model, &quot;weight_layer_specs&quot;, None)
+    if specs:
+        stage_layers, global_weights = [], 0.0
+        for spec in specs:
+            domain = spec.get(&quot;domain&quot;, &quot;replicated&quot;)
+            if domain not in {&quot;replicated&quot;, &quot;attn&quot;, &quot;ffn&quot;, &quot;routed&quot;}:
+                raise ValueError(f&quot;Unknown weight sharding domain: {domain}&quot;)
+            divisor = {&quot;attn&quot;: atp, &quot;ffn&quot;: ftp, &quot;routed&quot;: ftp * ep}.get(domain, 1)
+            parameters = _weight_number(spec.get(&quot;parameters&quot;), &quot;parameters&quot;, integer=True)
+            count = _weight_number(spec.get(&quot;layers&quot;, 1), &quot;layers&quot;, integer=True)
+            dtype = spec.get(&quot;dtype&quot;, spec.get(&quot;weight_precision&quot;))
+            dtypes = {&quot;fp32&quot;: 4, &quot;float32&quot;: 4, &quot;bf16&quot;: 2, &quot;bfloat16&quot;: 2, &quot;fp16&quot;: 2,</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-admission" data-category="显存">
+<p class="formula-category">显存</p><h2>batch 显存准入</h2>
+<pre class="equation">admit ⇔ M_persistent(B)+max_phase M_live(B) ≤ 0.9×HBM; B_max=max{B: admit(B)}</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>prefill含draft初始化峰值；decode含完整proposal/verification/replay峰值。主模型原生上界再按实际整数DP负载与阶段max检查，forced decode仍按8对齐。MTP关闭保留主模型基线。缺少必需几何或非有限参数显式失败。</p>
+<p class="source-location">代码：<code>llm_perf/core/speculative_memory.py:314</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">93eaec9f2997e9cbb519bd97743fbef57033a034ef73169a6610c1904ba61d52</p><pre>
+def speculative_memory_breakdown(model, gpu_config, batch_size, *, mtp_stage=0,
+        seq_len=None, phase=&quot;decode&quot;, layers=None, workspace_bytes=None,
+        activation_bpe=None, logits_bpe=4.0):
+    &quot;&quot;&quot;Return named persistent and peak temporary byte terms on the busiest GPU.
+
+    ``phase=&#x27;prefill&#x27;`` includes main prompt processing and draft initialization,
+    with main hidden states retained until initialization consumes them. The
+    decode path reserves worst-case full acceptance, independent of acceptance
+    probability. ``mtp_stage=0`` preserves legacy main weights+KV admission;
+    a supplied backend override is explicitly added to that baseline.
+    &quot;&quot;&quot;
+    stage = _number(mtp_stage, &quot;mtp_stage&quot;, integer=True)
+    batch = _number(batch_size, &quot;batch_size&quot;, integer=True)
+    if phase not in {&quot;decode&quot;, &quot;prefill&quot;}:
+        raise ValueError(&quot;phase must be &#x27;decode&#x27; or &#x27;prefill&#x27;&quot;)
+    default_seq = _value(model, &quot;input_seq_length&quot;) + (0 if phase == &quot;prefill&quot; else _value(model, &quot;output_seq_length&quot;))
+    seq = _number(default_seq if seq_len is None else seq_len, &quot;seq_len&quot;, integer=True)
+    raw_mapping = gpu_config or {}
+    mapping = {key: _number(raw_mapping.get(key, raw_mapping.get(&quot;attn_ep&quot;, 1) if key == &quot;attn_cp&quot; else 1),
+                            key, positive=True, integer=True)</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-moe-routing" data-category="MoE">
+<p class="formula-category">MoE</p><h2>MoE token-expert 守恒</h2>
+<pre class="equation">tokens_per_expert = B_global × k / E; total_assignments = B_global × k</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>EP=1也必须除以全部专家数E。均衡路由为期望值；真实路由不均衡和整数tile padding另计，不能误认为每个expert都收到全batch。</p><p class="example">手算示例：B=256, k=8, E=256 → <strong>8 tokens/expert</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/core_single_op.cpp:214</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">ee4939d2544f8eccd987f7e8007da3f10ffc5190f0e24103bc34bc1c903022c5</p><pre>
+FastGpuNmkShape llm_cost_gpu_nmk_shape(
+    const char *op_type,
+    int ich,
+    int och,
+    double batch,
+    int expert,
+    int topk,
+    int q_head,
+    int kv_head,
+    int kh,
+    int kw,
+    int h,
+    int w,
+    int stride,
+    int group,
+    int hw_gemm_m,
+    int hw_gemm_n,
+    int hw_gemm_k,
+    int hw_num,
+    int dp,</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-shared-experts" data-category="MoE">
+<p class="formula-category">MoE</p><h2>共享专家数不是布尔值</h2>
+<pre class="equation">F_shared = E_shared × F_moe; MAC_shared/token = 3 × D × F_shared</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>n_shared_experts=2必须产生2份共享专家工作量与权重；0才是不执行共享专家。</p>
+<p class="source-location">代码：<code>llm_perf/core/llm_graph.py:242</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9</p><pre>        &quot;dense_fc_hidden&quot;: dense_fc_hidden,
+        &quot;shared_experts&quot;: _int_value(spec, &quot;shared_experts&quot;, 0),
+        &quot;experts&quot;: _int_value(spec, &quot;experts&quot;, 1),
+        &quot;topk&quot;: _int_value(spec, &quot;topk&quot;, 1),
+        &quot;dense_layers&quot;: _int_value(spec, &quot;dense_layers&quot;, 0),
+        &quot;layers&quot;: _int_value(spec, &quot;layers&quot;, 1),
+        &quot;activation&quot;: str(_value(spec, &quot;activation&quot;, &quot;Silu&quot;)),
+        &quot;feature_bpe&quot;: _float_value(spec, &quot;feature_bpe&quot;, 1.0),
+        &quot;kv_cache_bpe&quot;: _float_value(spec, &quot;kv_cache_bpe&quot;, 1.0),
+        &quot;weight_bpe&quot;: _float_value(spec, &quot;weight_bpe&quot;, 1.0),
+        &quot;output_bpe&quot;: _float_value(spec, &quot;output_bpe&quot;, 1.0),
+        &quot;optimizer_bpe&quot;: _float_value(spec, &quot;optimizer_bpe&quot;, 1.0),
+        &quot;input_seq_length&quot;: _int_value(spec, &quot;input_seq_length&quot;, 1024),
+        &quot;output_seq_length&quot;: _int_value(spec, &quot;output_seq_length&quot;, 8192),
+    }
+
+
+def _row(
+    model: Mapping[str, Any],
+    name: str,
+    op_type: str,</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-norm" data-category="基础算子">
+<p class="formula-category">基础算子</p><h2>重复层的归一化</h2>
+<pre class="equation">norm_work_total = norm_work_per_token × B × Q × L</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>attention norm和FFN norm均按对应Transformer层数展开，不能沿用layer=1；MTP和最终norm的层数单独处理。</p>
+<p class="source-location">代码：<code>llm_perf/core/llm_graph.py:518</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9</p><pre>        return {
+            &quot;plain&quot;: &quot;RMSNorm(x) = x * gamma / sqrt(mean(x^2) + eps).&quot;,
+            &quot;latex&quot;: &quot;RMSNorm(x)=x*gamma/sqrt(mean(x^2)+eps)&quot;,
+        }
+    if op_type == &quot;Rope&quot;:
+        return {
+            &quot;plain&quot;: &quot;RoPE rotates query/key pairs with position-dependent sin/cos phases.&quot;,
+            &quot;latex&quot;: &quot;[x_0&#x27;,x_1&#x27;]=[x_0 cos theta - x_1 sin theta, x_0 sin theta + x_1 cos theta]&quot;,
+        }
+    if op_type == &quot;emb&quot;:
+        return {
+            &quot;plain&quot;: &quot;X = Embedding[token_ids].&quot;,
+            &quot;latex&quot;: &quot;X=E[token_ids]&quot;,
+        }
+    if op_type == &quot;Add&quot;:
+        return {
+            &quot;plain&quot;: &quot;Y = A + B.&quot;,
+            &quot;latex&quot;: &quot;Y=A+B&quot;,
+        }
+    if op_type == &quot;Mul&quot;:
+        return {</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-pd-payload" data-category="AFD / PD">
+<p class="formula-category">AFD / PD</p><h2>PD 移交 prompt 完整状态</h2>
+<pre class="equation">bytes_PD = B_prefill × persistent_KV(S=I); t_PD = bytes_PD/(BW×10⁹) + latency_ns×10⁻⁹</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>按prompt长度I移交，不含未来O个token；传递model_args时使用完整cache specs，包括DSA索引与V4状态。没有模型metadata时的旧配置仅是MLA回退公式。</p>
+<p class="source-location">代码：<code>scripts/disaggregated_inference.py:259</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">f00553930ff2aa49c0fbf394800c24f1bf38a3e14ab0378d338fe1ed191c3d4b</p><pre>
+def estimate_pd_transfer(batch: int, input_seq_len: int, config: PdTransferConfig) -&gt; dict:
+    &quot;&quot;&quot;
+    Estimate prefill-to-decode KV transfer cost.
+    Model-aware bytes = batch * persistent_kv_bytes(model, seq_len=input_tokens).
+    Without model metadata, the legacy fallback describes MLA latent + RoPE only.
+    &quot;&quot;&quot;
+    if config.bandwidth_GBps &lt;= 0:
+        raise ValueError(&quot;pd transfer bandwidth_GBps must be positive&quot;)
+    if config.latency_ns &lt; 0:
+        raise ValueError(&quot;pd transfer latency_ns must be non-negative&quot;)
+    if config.compress_kv &lt; 0 or config.rope_dim &lt; 0 or config.head_kv &lt; 0 or config.n_layers &lt; 0:
+        raise ValueError(&quot;pd transfer KV shape fields must be non-negative&quot;)
+    if config.kv_cache_bpe &lt; 0:
+        raise ValueError(&quot;pd transfer kv_cache_bpe must be non-negative&quot;)
+
+    transfer_batch = max(int(batch), 1)
+    transfer_input = max(int(input_seq_len), 1)
+    kv_elements_per_token = (config.compress_kv + config.rope_dim) * config.head_kv
+    # PD split sends the completed KV cache for the prompt to the decode side.
+    # Each token carries compressed KV plus ROPE dimensions for each KV head and</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-pd-bandwidth" data-category="AFD / PD">
+<p class="formula-category">AFD / PD</p><h2>PD 端口聚合带宽</h2>
+<pre class="equation">BW_PD = min(P_GPU×NIC_P, D_GPU×NIC_D)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>默认只计实际参与GPU的NIC端口，不能ceil到整节点后给2张GPU记满8张GPU带宽。实际跨节点oversubscription应显式降低带宽。</p>
+<p class="source-location">代码：<code>scripts/plot_throughput_tps.py:1280</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">5ac06c403edf6477edd74f77cb9eacc7c59d35f7bc3695b5aa724410f5f782c6</p><pre>
+def _pd_inter_node_aggregate_bandwidth_GBps(total_gpu_num: int, gpu_per_node: int, nic_bw_per_gpu_GBps: float) -&gt; float:
+    &quot;&quot;&quot;Use the NICs attached to participating GPUs on the smaller endpoint.&quot;&quot;&quot;
+    total = max(int(total_gpu_num), 1)
+    prefill_gpu_num = pd_prefill_gpu_count(total)
+    decode_gpu_num = total - prefill_gpu_num
+    if prefill_gpu_num &lt;= 0 or decode_gpu_num &lt;= 0:
+        return float(nic_bw_per_gpu_GBps)
+
+    return min(prefill_gpu_num, decode_gpu_num) * float(nic_bw_per_gpu_GBps)
+
+
+def _pd_transfer_config_for_strategy(gpu_name: str, model_args: ModelArgs | None, total_gpu_num: int) -&gt; PdTransferConfig:
+    &quot;&quot;&quot;Build the PD transfer model for one fixed-GPU strategy group.&quot;&quot;&quot;
+    gpu_per_node = int(_gpu_info_value(gpu_name, &quot;gpu_per_node&quot;, None))
+    inter_bw_per_gpu = _gpu_info_value(gpu_name, &quot;nic_bw&quot;, None)
+    inter_bw = _pd_inter_node_aggregate_bandwidth_GBps(total_gpu_num, gpu_per_node, inter_bw_per_gpu)
+    inter_latency = _gpu_info_value(gpu_name, &quot;nic_latency&quot;, None)
+    intra_bw = _gpu_info_value(gpu_name, &quot;p2p_bw&quot;, None)
+    intra_latency = _gpu_info_value(gpu_name, &quot;p2p_latency&quot;, None)
+    placement = &quot;same_node&quot; if int(total_gpu_num) &lt;= gpu_per_node else &quot;inter_node&quot;</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-af-payload" data-category="AFD / PD">
+<p class="formula-category">AFD / PD</p><h2>AFD 激活传输量</h2>
+<pre class="equation">bytes_AF = B × O × L × D × b_activation × r_boundaries × (V/E)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>V为每轮verifier token数，E为期望接受token数。调用侧已把V/E写入activation_bpe，传输函数不再二次乘除。通常每层A→F和F→A共2次。</p>
+<p class="source-location">代码：<code>scripts/disaggregated_inference.py:306</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">f00553930ff2aa49c0fbf394800c24f1bf38a3e14ab0378d338fe1ed191c3d4b</p><pre>
+def estimate_stage_activation_transfer(batch: int, output_seq_len: int, config: DecodeAttnFfnSplitConfig) -&gt; dict:
+    &quot;&quot;&quot;
+    Estimate decode attention-to-FFN activation transfer cost for split decode serving.
+    Formula: bytes = batch * output_tokens * layers * hidden_size * activation_bpe * transfers_per_layer.
+    &quot;&quot;&quot;
+    if config.bandwidth_GBps &lt;= 0:
+        raise ValueError(&quot;decode split transfer bandwidth_GBps must be positive&quot;)
+    if config.latency_ns &lt; 0:
+        raise ValueError(&quot;decode split transfer latency_ns must be non-negative&quot;)
+    if config.hidden_size &lt; 0 or config.n_layers &lt; 0 or config.transfers_per_layer &lt; 0:
+        raise ValueError(&quot;decode split transfer shape fields must be non-negative&quot;)
+    if config.activation_bpe &lt; 0:
+        raise ValueError(&quot;decode split transfer activation_bpe must be non-negative&quot;)
+
+    transfer_batch = max(int(batch), 1)
+    transfer_output = max(int(output_seq_len), 1)
+    # Decode attention/FFN split sends activations once per selected boundary
+    # per transformer layer. transfers_per_layer allows modeling one-way or
+    # bidirectional variants without changing the layer loop.
+    transfer_bytes = (</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-af-rounds" data-category="AFD / PD">
+<p class="formula-category">AFD / PD</p><h2>AFD 每输出轮次启动延迟</h2>
+<pre class="equation">messages = O × L × r_boundaries / E; t_AF = bytes_AF/(BW×10⁹) + messages×latency_ns×10⁻⁹</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>每轮跨层依赖都会产生启动延迟；不能仅按L×2计一次。MTP以期望轮数O/E计，允许非整数期望值。</p><p class="example">手算示例：O=4096, L=61, r=2, E=2 → <strong>249856 expected messages</strong></p>
+<p class="source-location">代码：<code>scripts/disaggregated_inference.py:306</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">f00553930ff2aa49c0fbf394800c24f1bf38a3e14ab0378d338fe1ed191c3d4b</p><pre>
+def estimate_stage_activation_transfer(batch: int, output_seq_len: int, config: DecodeAttnFfnSplitConfig) -&gt; dict:
+    &quot;&quot;&quot;
+    Estimate decode attention-to-FFN activation transfer cost for split decode serving.
+    Formula: bytes = batch * output_tokens * layers * hidden_size * activation_bpe * transfers_per_layer.
+    &quot;&quot;&quot;
+    if config.bandwidth_GBps &lt;= 0:
+        raise ValueError(&quot;decode split transfer bandwidth_GBps must be positive&quot;)
+    if config.latency_ns &lt; 0:
+        raise ValueError(&quot;decode split transfer latency_ns must be non-negative&quot;)
+    if config.hidden_size &lt; 0 or config.n_layers &lt; 0 or config.transfers_per_layer &lt; 0:
+        raise ValueError(&quot;decode split transfer shape fields must be non-negative&quot;)
+    if config.activation_bpe &lt; 0:
+        raise ValueError(&quot;decode split transfer activation_bpe must be non-negative&quot;)
+
+    transfer_batch = max(int(batch), 1)
+    transfer_output = max(int(output_seq_len), 1)
+    # Decode attention/FFN split sends activations once per selected boundary
+    # per transformer layer. transfers_per_layer allows modeling one-way or
+    # bidirectional variants without changing the layer loop.
+    transfer_bytes = (</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mtp-components" data-category="MTP">
+<p class="formula-category">MTP</p><h2>MTP 组件只归一化一次</h2>
+<pre class="equation">t_component/output = t_component/round ÷ E; t_A includes draft work</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>AF和PD_AF复用同一入口，components_per_output_token标记防止重复除E。完整draft attention/FFN/MoE/通信保留在GPU侧，独立FFN迁移排除draft行。此处为完整结构的解析估计，非实测MTP速度承诺。</p>
+<p class="source-location">代码：<code>scripts/plot_throughput_tps.py:1471</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">5ac06c403edf6477edd74f77cb9eacc7c59d35f7bc3695b5aa724410f5f782c6</p><pre>
+def _phase_with_effective_mtp_components(decode: PhaseResult, decode_row: pd.Series) -&gt; PhaseResult:
+    &quot;&quot;&quot;Normalize per-MTP-step component timings to per accepted output token.&quot;&quot;&quot;
+    if decode.components_per_output_token:
+        return decode
+    expected_tokens = _mtp_expected_tokens_for_row(decode_row)
+    components = {
+        component: float(value) / expected_tokens
+        for component, value in (decode.components or {}).items()
+    }
+    return replace(decode, tpot_s=decode.tpot_s / expected_tokens, components=components,
+                   components_per_output_token=True)
+
+
+def _row_from_disaggregated_result(
+    result: dict,
+    decode_row: pd.Series,
+    strategy_type: str,
+    gpu_num: int,
+    decode: PhaseResult | None = None,
+) -&gt; dict:</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mtp-modules" data-category="MTP">
+<p class="formula-category">MTP</p><h2>独立模块数量、块深度与提案步数</h2>
+<pre class="equation">N=len(modules); checkpoint_layer_id(m)=L+Σ_{r&lt;m}d_r; depth_chain: k≤N; single_module_recurrent: k&gt;0</pre>
+<p class="variables">N=n_mtp_layers（兼容num_mtp_layers、num_nextn_predict_layers）；d_m=modules[m].block_depth；k=mtp_stage提案步数；L=主模型层数。</p><p>schema v2将modules、proposal_policy、selected_module与运行时步数分开。计数别名必须一致；缺失旧配置默认1，显式0允许MTP关闭但不能启用。多个模块默认各1个block；single_module_recurrent只复用selected_module，depth_chain使用0..k−1且不循环取模。每模块保留独立几何、压缩/hash位置与精度。官方V4 Flash/Pro配置各声明1个模块，多模块是解析扩展。</p>
+<p class="source-location">代码：<code>llm_perf/core/mtp_modules.py:15</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">6d981aa49c5f42649079968d7a439c0d71e19401dabf3a253d28707c003fdb08</p><pre>
+def resolve_modules(model, resolve_single):
+    from .mtp import _get, _integer
+    base = copy.deepcopy(dict(model) if isinstance(model, Mapping) else vars(model))
+    supplied = _get(model, &#x27;mtp_config&#x27;, default={})
+    if supplied is None:
+        supplied = {}
+    if not isinstance(supplied, Mapping):
+        raise ValueError(&#x27;mtp_config must be an object&#x27;)
+    supplied = copy.deepcopy(dict(supplied))
+    unknown = set(supplied) - SINGLE_FIELDS - SCHEDULE_FIELDS - set(COUNT_ALIASES)
+    if unknown:
+        raise ValueError(f&#x27;Unsupported mtp_config fields: {sorted(unknown)}&#x27;)
+    version = _integer(supplied.get(&#x27;schema_version&#x27;, 1), &#x27;schema_version&#x27;, 1)
+    if version not in (1, 2):
+        raise ValueError(&#x27;Unsupported mtp_config schema_version&#x27;)
+    attention = copy.deepcopy(_get(model, &#x27;attention_config&#x27;, default={}))
+    if attention is None:
+        attention = {}
+    if not isinstance(attention, Mapping):
+        raise ValueError(&#x27;attention_config must be an object&#x27;)</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/config.json" rel="noreferrer">参考来源 1</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json" rel="noreferrer">参考来源 2</a> </p></article><article class="formula-card" id="algo-mtp-chain" data-category="MTP">
+<p class="formula-category">MTP</p><h2>Depth chain 的历史准备与短 prompt</h2>
+<pre class="equation">F_block=Σ_{m=0}^{k−1}d_m Σ_{j=0}^{m}1[S+j≥m+1]; d_m=1,S≥k ⇒ F_block=k(k+1)/2; F_vocab=k; h_m(t)=F_m(h_(m−1)(t−1), token_t)</pre>
+<p class="variables">S=本轮起点的已提交绝对context长度，S≥1；m=0..k−1；j=模块本轮相对位置；d_m=该模块block_depth；h_−1为主模型hidden。</p><p>module m先准备位置S..S+m−1的历史，最后S+m才输出logits。标准单block模块、历史足够时k=3需要6次block前向和3次词表投影；非9次完整输出。短prompt按绝对位置有效条件S+j≥m+1跳过无效前缀，三角计数只适用于稳态；空prompt显式拒绝。初始化按模块依赖顺序构造从m+1开始的历史。恢复原始draft状态后，接受前缀重算使用对应下层真实hidden，拒绝候选不能留在已提交状态。</p><p class="example">手算示例：k=3,N≥3,d_m=1,S≥3：block次数=1+2+3，词表投影=3 → <strong>6 block forwards/round</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/mtp.py:527</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">d0e2a3dffe79d2db9c4dc47eaad9d01324f0859c737aa208f7e59e3314a3b72a</p><pre>
+def prepare_mtp_execution(rows, model, *, is_decode, mtp_stage, accept_rate=.7, gpu_config=None):
+    &quot;&quot;&quot;Expand independent modules into an explicit speculative dependency graph.
+
+    Depth-chain node (m,t) uses hidden (m-1,t-1). Later depths fill missing
+    historical positions before producing their final proposal. Replay uses
+    true committed prefixes and restores each module&#x27;s original mutable state.
+    &quot;&quot;&quot;
+    from .mtp_modules import execution_modules
+    import pandas as pd
+    stage = _integer(mtp_stage, &quot;mtp_stage&quot;)
+    result = rows.copy(deep=True)
+    names = result[&quot;NN name&quot;].fillna(&quot;&quot;).astype(str)
+    if stage == 0:
+        if names.str.startswith((&quot;MTP_CYCLE_&quot;, &quot;VERIFY_&quot;)).any():
+            from llm_perf.core.llm_graph import _build_cost_phase_nodes
+            return pd.DataFrame([node[&quot;row&quot;] for node in _build_cost_phase_nodes(
+                graph_model_from_args(model), &quot;decode&quot; if is_decode else &quot;prefill&quot;, include_mtp=False)]).fillna(0)
+        result.attrs.pop(&quot;mtp_execution&quot;, None)
+        return result.loc[~names.str.startswith((&quot;MTP_&quot;, &quot;DRAFT_INIT_&quot;))].reset_index(drop=True)
+    outcomes = cycle_outcomes(stage, accept_rate)</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mtp-acceptance" data-category="MTP">
+<p class="formula-category">MTP</p><h2>条件接受率的前缀分布</h2>
+<pre class="equation">p_0=1; p_i=∏_{r=1}^{i}a_r; P(A=j)=p_j(1−a_(j+1)) for j&lt;k; P(A=k)=p_k; E=1+Σ_{i=1}^{k}p_i</pre>
+<p class="variables">a_i：在前i−1个提案已接受条件下第i个的接受率；A=接受的draft前缀长度；E=每轮期望输出token数。</p><p>标量a展开为长度k的条件接受率；向量长度必须等于k且每项有限并在[0,1]。不能把逐位置条件概率求平均后代入几何级数。例中P(A=0,1,2)=[0.5,0.375,0.125]；多1个token来自拒绝修正或全接受后的额外输出。</p><p class="example">手算示例：k=2,a=[0.5,0.25]：E=1+0.5+0.5×0.25 → <strong>1.625 expected output tokens/round</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/mtp.py:430</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">d0e2a3dffe79d2db9c4dc47eaad9d01324f0859c737aa208f7e59e3314a3b72a</p><pre>
+def cycle_outcomes(draft_steps, accept_rate):
+    &quot;&quot;&quot;Exact accepted-prefix distribution for scalar or conditional vector rates.&quot;&quot;&quot;
+    steps = _integer(draft_steps, &quot;draft_steps&quot;)
+    rates = acceptance_rates(steps, accept_rate)
+    prefix = 1.0
+    result = []
+    for j in range(steps+1):
+        result.append(dict(accepted_draft_tokens=j, probability=prefix*(1-rates[j] if j&lt;steps else 1),
+                           output_tokens=j+1, catchup_tokens=j+1))
+        if j &lt; steps:
+            prefix *= rates[j]
+    return result
+
+
+def cache_transition(*, committed_tokens, draft_steps, accepted_draft_tokens):
+    start = _integer(committed_tokens, &quot;committed_tokens&quot;)
+    steps = _integer(draft_steps, &quot;draft_steps&quot;, 1)
+    accepted = _integer(accepted_draft_tokens, &quot;accepted_draft_tokens&quot;)
+    if accepted &gt; steps:
+        raise ValueError(&quot;accepted_draft_tokens cannot exceed draft_steps&quot;)</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mtp-cycle" data-category="MTP">
+<p class="formula-category">MTP</p><h2>完整 speculative cycle 与逐前缀期望</h2>
+<pre class="equation">p_0=1; p_i=∏_{r=1}^{i}a_r; E=1+Σ_{i=1}^{k}p_i; TPOT=[T_proposal+T_verify(k+1)+Σ_{j=0}^{k}P(A=j)T_replay(j+1)+T_state]/E</pre>
+<p class="variables">a_i：逐位置条件接受率，标量时各项相同；p_i：前i项全接受概率；P(A=j)=p_j(1−a_(j+1))，j=k时为p_k；T_replay(j+1)为该结果完整重算成本；时间单位一致。</p><p>proposal包含所选模块的embedding、融合、完整Transformer及必要输出；depth_chain另含历史准备。verification一次处理k+1位置；主模型恢复所选已验证前缀状态，draft恢复原始状态并重放对应真实前缀，省去replay logits。每个位置按实际上下文计费，压缩边界不能用平均接受长度代替；prompt初始化另计。辅助投影服从official_mixed_v1或显式BF16策略。native汇总与sweep复用相同E，组件只除一次；接受率和执行时间仍是待测解析配置。</p><p class="example">手算示例：k=2,a=0.5: proposals=20, verify=30, replay costs=110/120/130 ns → <strong>167.5 expected ns/cycle</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/mtp.py:455</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">d0e2a3dffe79d2db9c4dc47eaad9d01324f0859c737aa208f7e59e3314a3b72a</p><pre>
+def expected_cycle_latency(draft_steps, accept_rate, *, proposal_ns, verifier_ns,
+                           catchup_ns, state_management_ns=0):
+    outcomes = cycle_outcomes(draft_steps, accept_rate)
+    expected = sum(item[&quot;probability&quot;]*item[&quot;output_tokens&quot;] for item in outcomes)
+    catchup = sum(item[&quot;probability&quot;]*float(catchup_ns[item[&quot;accepted_draft_tokens&quot;]]) for item in outcomes)
+    values = [float(proposal_ns), float(verifier_ns), catchup, float(state_management_ns)]
+    if any(not math.isfinite(x) or x &lt; 0 for x in values):
+        raise ValueError(&quot;cycle costs must be finite and nonnegative&quot;)
+    total = sum(values)
+    return {&quot;proposal_time_ns&quot;: values[0], &quot;verifier_time_ns&quot;: values[1],
+            &quot;catchup_time_ns&quot;: catchup, &quot;state_management_time_ns&quot;: values[3],
+            &quot;expected_tokens&quot;: expected, &quot;total_time_ns&quot;: total, &quot;tpot_ns&quot;: total/expected}
+
+
+def graph_model_from_args(model):
+    &quot;&quot;&quot;Rebuild graph inputs from persisted ModelArgs; no historical workbook graph reuse.&quot;&quot;&quot;
+    from llm_perf.core.llm_graph import _model_dict_from_spec
+    aliases = {
+        &quot;hidden&quot;: (&quot;dim&quot;, &quot;hidden&quot;), &quot;layers&quot;: (&quot;n_layers&quot;, &quot;layer&quot;),
+        &quot;dense_layers&quot;: (&quot;n_dense_layers&quot;, &quot;dense_layer&quot;), &quot;experts&quot;: (&quot;n_routed_experts&quot;, &quot;expert&quot;),</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-mtp-memory" data-category="显存">
+<p class="formula-category">显存</p><h2>已加载权重、活跃模块状态与阶段峰值</h2>
+<pre class="equation">M=W_main+Σ_loaded W_unique,m+KV_main+Σ_active KV_m+candidate_KV+rollback_states+retained_hidden+live_hidden+max_phase(activations+logits+communication+workspace)</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>available由modules声明，loaded_modules默认包含全部模块且必须覆盖active执行集合；已加载但未执行的模块仍有权重，没有独立cache/候选状态。共享embedding/head按身份只计一次；权重不乘提案步数或接受概率，FP8二维scale与融合norm参数计入驻留。活跃模块分别计KV、候选、回滚状态和已提交边界hidden；proposal/history/replay所需跨模块hidden另计。短prompt去掉无效cache前缀但保留绝对压缩边界和可变状态。顺序模块与fusion/block scratch使用阶段同时存活缓冲和的最大值，不能累加互斥workspace；FP8输入及scale、FP32索引分数不能被workspace=0删除。</p>
+<p class="source-location">代码：<code>llm_perf/core/speculative_memory.py:314</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">93eaec9f2997e9cbb519bd97743fbef57033a034ef73169a6610c1904ba61d52</p><pre>
+def speculative_memory_breakdown(model, gpu_config, batch_size, *, mtp_stage=0,
+        seq_len=None, phase=&quot;decode&quot;, layers=None, workspace_bytes=None,
+        activation_bpe=None, logits_bpe=4.0):
+    &quot;&quot;&quot;Return named persistent and peak temporary byte terms on the busiest GPU.
+
+    ``phase=&#x27;prefill&#x27;`` includes main prompt processing and draft initialization,
+    with main hidden states retained until initialization consumes them. The
+    decode path reserves worst-case full acceptance, independent of acceptance
+    probability. ``mtp_stage=0`` preserves legacy main weights+KV admission;
+    a supplied backend override is explicitly added to that baseline.
+    &quot;&quot;&quot;
+    stage = _number(mtp_stage, &quot;mtp_stage&quot;, integer=True)
+    batch = _number(batch_size, &quot;batch_size&quot;, integer=True)
+    if phase not in {&quot;decode&quot;, &quot;prefill&quot;}:
+        raise ValueError(&quot;phase must be &#x27;decode&#x27; or &#x27;prefill&#x27;&quot;)
+    default_seq = _value(model, &quot;input_seq_length&quot;) + (0 if phase == &quot;prefill&quot; else _value(model, &quot;output_seq_length&quot;))
+    seq = _number(default_seq if seq_len is None else seq_len, &quot;seq_len&quot;, integer=True)
+    raw_mapping = gpu_config or {}
+    mapping = {key: _number(raw_mapping.get(key, raw_mapping.get(&quot;attn_ep&quot;, 1) if key == &quot;attn_cp&quot; else 1),
+                            key, positive=True, integer=True)</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-pipeline" data-category="AFD / PD">
+<p class="formula-category">AFD / PD</p><h2>分离式吞吐与时延</h2>
+<pre class="equation">RPS_system=min(RPS_P,RPS_PD,RPS_A,RPS_AF,RPS_F); output_TPS=RPS_system×O; latency_e2e=Σ serial stage latencies</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>稳态吞吐受最慢stage限制；单请求顺序延迟不能用min吞吐式替代。未模拟队列、动态调度、干扰和真实服务SLA尾延迟。</p>
+<p class="source-location">代码：<code>scripts/disaggregated_inference.py:361</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">f00553930ff2aa49c0fbf394800c24f1bf38a3e14ab0378d338fe1ed191c3d4b</p><pre>
+def combine_disaggregated_pair(
+    prefill: PhaseResult,
+    decode: PhaseResult,
+    transfer_config: PdTransferConfig | None = None,
+    decode_split_config: DecodeAttnFfnSplitConfig | None = None,
+) -&gt; dict:
+    &quot;&quot;&quot;
+    Combine one prefill phase and one decode phase into a unified serving result.
+    Throughput is the minimum request rate across prefill, PD transfer, decode attention, AF transfer, and decode FFN stages.
+    &quot;&quot;&quot;
+    input_seq_len = max(prefill.input_seq_len, decode.input_seq_len, 1)
+    output_seq_len = max(prefill.output_seq_len, decode.output_seq_len, 1)
+    # Normalize each phase into requests per second, then make the serving
+    # pipeline throughput equal to the slowest active stage.
+    prefill_rps = prefill.throughput_total_tps / input_seq_len
+    decode_rps = decode.throughput_total_tps / output_seq_len
+    stage_rps = {&quot;prefill&quot;: prefill_rps}
+
+    pd_transfer = {
+        &quot;transport&quot;: &quot;disabled&quot;,</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-inferencex" data-category="验证">
+<p class="formula-category">验证</p><h2>InferenceX 对齐与覆盖率</h2>
+<pre class="equation">APE=100×|prediction/reference−1|; MdAPE=median(APE_matched); coverage=N_matched/N_reference</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>只在相同workload/精度/GPU数和约定TPOT区间比较output吞吐。零匹配输出insufficient_coverage及null误差，不是0%误差，也不能通过校准验收。旧快照与新预测分别记录hash。</p>
+<p class="source-location">代码：<code>llm_perf/validation/pareto_compare.py:226</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">4996cac70d56bf9e559be728fa5f1d852368f67647606255f23b442b631a894a</p><pre>
+def summarize_matches(
+    matches: Iterable[FrontierMatch], *, hardware: str | None = None
+) -&gt; GpuErrorSummary:
+    &quot;&quot;&quot;Summarize matched records; p90 is sorted rank ceil(0.90*n), one-based.&quot;&quot;&quot;
+
+    records = tuple(matches)
+    hardware = hardware or (records[0].reference.hardware if records else None)
+    if hardware is None:
+        raise ValueError(&quot;empty matches require explicit hardware&quot;)
+    if any(item.reference.hardware != hardware for item in records):
+        raise ValueError(&quot;matches must belong to one hardware&quot;)
+    matched = tuple(item for item in records if item.signed_percent_error is not None)
+    if not matched:
+        return GpuErrorSummary(
+            hardware, 0, None, None, None,
+            max((item.reference.output_tps_per_gpu for item in records), default=None),
+            None, None, &quot;insufficient_coverage&quot;,
+        )
+
+    signed = [item.signed_percent_error for item in matched]</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-v41-csa2-ownership" data-category="V4.1 / DSpark">
+<p class="formula-category">V4.1 / DSpark</p><h2>V4.1 CSA2 的全量、重索引与复用层</h2>
+<pre class="equation">KV_owner(l)=latest KV source≤l; index_owner(l)=latest index source≤l; S_access=min(S,W)+min(floor(S/r_l),k_index)</pre>
+<p class="variables">l=层；S=当前上下文；W=局部窗口；r_l∈{0,1,2}；k_index=index_topk。</p><p>r=0为SWA；KV source为full，只有index source为reindex，其他层为reuse。共享global KV和index cache只在full owner处分配；reindex重新计算query分数/top-k而不复制历史缓存。packed策略在candidate_source之后把候选评分长度限制为min(floor(S/r),candidate_topk_blocks×candidate_block_size)。访问长度与完整历史驻留分别计算。</p>
+<p class="source-location">代码：<code>llm_perf/tools/deepseek_v41.py:31</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">58df35f4511b7f4d21b54f0cdae73f004d499e971174af0ac0d908bef944f3a3</p><pre>
+def layer_schedule(config):
+    c = text_config(config)
+    n = c[&#x27;num_hidden_layers&#x27;]
+    ratios = c[&#x27;compress_ratios&#x27;]
+    sources = set(c[&#x27;kv_source_layer_ids&#x27;])
+    indices = set(c[&#x27;index_source_layer_ids&#x27;])
+    if len(ratios) &lt; n or not sources &lt;= indices or any(i &lt; 0 or i &gt;= n for i in indices):
+        raise ValueError(&#x27;Invalid CSA2 source layer schedule&#x27;)
+    schedule, kv_source, index_source = [], None, None
+    for i in range(n):
+        ratio = ratios[i]
+        if ratio not in {0, 1, 2}:
+            raise ValueError(&#x27;Unsupported CSA2 compression ratio&#x27;)
+        if i in sources:
+            kv_source = i
+        if i in indices:
+            index_source = i
+        if ratio and (kv_source is None or index_source is None or ratios[kv_source] != ratio):
+            raise ValueError(f&#x27;Layer {i} has no compatible CSA2 source&#x27;)
+        mode = &#x27;swa&#x27; if not ratio else &#x27;full&#x27; if i in sources else &#x27;reindex&#x27; if i in indices else &#x27;reuse&#x27;</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-v41-cache" data-category="V4.1 / DSpark">
+<p class="formula-category">V4.1 / DSpark</p><h2>V4.1 共享 global cache、窗口与压缩状态</h2>
+<pre class="equation">b_main=d/2+ceil(d/16); b_index=d_i/2+ceil(d_i/32); b_local=d+ceil(d/32); M_global=Σ_full floor(S/r)(b_main+b_index); M_window=L×min(S,W)×b_local; M_state=Σ_full,r&gt;1 2rd×4; M_cache=M_global+M_window+M_state</pre>
+<p class="variables">d=head_dim；d_i=index_head_dim；L=主模型层数；full=拥有global KV的source层；容量单位bytes。</p><p>packed主global KV使用NVFP4值和每16元素scale，index使用MXFP4值和每32元素scale，local使用FP8及每32元素scale。reference三者均为BF16。每份attention replica、每请求的容量；共享K=V只算一份。Engram表另计Σ_vocab N_vocab×(d_engram+ceil(d_engram/32))，不是按请求复制的KV。PD迁移由调用方显式选择实际global/window/state与需要的replay状态，不把top-k访问当全部历史。</p>
+<p class="source-location">代码：<code>llm_perf/tools/deepseek_v41.py:58</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">58df35f4511b7f4d21b54f0cdae73f004d499e971174af0ac0d908bef944f3a3</p><pre>
+def cache_memory(config, *, seq_len, policy=&#x27;packed&#x27;):
+    c = text_config(config)
+    if policy not in {&#x27;packed&#x27;, &#x27;reference&#x27;} or seq_len &lt; 0:
+        raise ValueError(&#x27;Invalid cache policy or sequence length&#x27;)
+    d, di = c[&#x27;head_dim&#x27;], c[&#x27;index_head_dim&#x27;]
+    # Main NVFP4: E2M1 + 1 E4M3/16. Index MXFP4: E2M1 + 1 E8M0/32.
+    main = d/2 + math.ceil(d/16) if policy == &#x27;packed&#x27; else d*2
+    index = di/2 + math.ceil(di/32) if policy == &#x27;packed&#x27; else di*2
+    local = d + math.ceil(d/32) if policy == &#x27;packed&#x27; else d*2
+    owners = [x for x in layer_schedule(config) if x[&#x27;mode&#x27;] == &#x27;full&#x27;]
+    global_bytes = sum((seq_len//x[&#x27;compress_ratio&#x27;])*(main+index) for x in owners)
+    window_bytes = c[&#x27;num_hidden_layers&#x27;] * min(seq_len, c[&#x27;sliding_window&#x27;]) * local
+    compressor_bytes = sum(2*x[&#x27;compress_ratio&#x27;]*d*4 for x in owners if x[&#x27;compress_ratio&#x27;] &gt; 1)
+    ed = c[&#x27;engram_head_dim&#x27;]
+    engram_bytes = sum(c[&#x27;engram_num_embeddings&#x27;]) * (ed + math.ceil(ed/32))
+    return dict(global_bytes=global_bytes, window_bytes=window_bytes,
+        compressor_state_bytes=compressor_bytes, runtime_bytes=global_bytes+window_bytes+compressor_bytes,
+        engram_table_bytes=engram_bytes, global_bytes_per_token=sum((main+index)/x[&#x27;compress_ratio&#x27;] for x in owners))
+
+</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-v41-ced" data-category="V4.1 / DSpark">
+<p class="formula-category">V4.1 / DSpark</p><h2>V4.1 CED 的 prefill 与 decoder 有界回放</h2>
+<pre class="equation">Q_prefill,l=I if encoder or reference; Q_prefill,l=min(I,W) if packed decoder; Q_global_owner=I; Q_head,prefill=1</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>encoder为前floor(L/2)层，decoder为剩余层。packed decoder仅对局部窗口运行普通层操作，但global owner投影/压缩仍处理完整prompt I。prefill最后输出头只处理一个位置并产生首token；不能从有界decoder回放推断所有global状态也只有W。</p>
+<p class="source-location">代码：<code>llm_perf/tools/deepseek_v41.py:202</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">58df35f4511b7f4d21b54f0cdae73f004d499e971174af0ac0d908bef944f3a3</p><pre>            i, rate = item[&#x27;layer_id&#x27;], item[&#x27;compress_ratio&#x27;]
+            token = decode_query_len if phase == &#x27;decode&#x27; else min(input_len, c[&#x27;sliding_window&#x27;]) if policy == &#x27;packed&#x27; and item[&#x27;section&#x27;] == &#x27;decoder&#x27; else input_len
+            start = len(nodes)
+            def p(name, op, cin, cout=0, **kw):
+                return primitive(name, op, token, cin, cout, layer_id=i, **kw)
+            if item[&#x27;engram&#x27;]:
+                width = (c[&#x27;engram_max_ngram_size&#x27;]-1)*c[&#x27;engram_n_heads&#x27;]*c[&#x27;engram_head_dim&#x27;]
+                p(&#x27;ENGRAM_LOOKUP&#x27;, &#x27;ReferenceMemory&#x27;, width, width, component=&#x27;input&#x27;, role=&#x27;state_copy&#x27;,
+                    b_bpe=1+1/32, o_bpe=2, gpu_comm=&#x27;allreduce&#x27;)
+                p(&#x27;ENGRAM_WKV&#x27;, &#x27;MatMul&#x27;, width, d*(streams+1), component=&#x27;input&#x27;, dtype=&#x27;fp8&#x27;)
+                p(&#x27;ENGRAM_GATE_PROXY&#x27;, &#x27;RMS Norm&#x27;, d*streams, component=&#x27;input&#x27;)
+                p(&#x27;ENGRAM_RESIDUAL&#x27;, &#x27;Add&#x27;, d*streams, component=&#x27;input&#x27;)
+            for boundary in (&#x27;attention&#x27;, &#x27;ffn&#x27;):
+                component = &#x27;mhc_&#x27;+boundary
+                base = _row(model, f&#x27;L{i:02d}_MHC_{boundary.upper()}&#x27;, &#x27;MHC&#x27;, token, d, d,
+                    component=component, mhc_streams=streams, attention_role=&#x27;stream_collapse&#x27;)
+                for row in expand_reference_rows(model, [base], phase):
+                    emit(row, i)
+                if boundary == &#x27;attention&#x27;:
+                    p(&#x27;ATTN_NORM&#x27;, &#x27;RMS Norm&#x27;, d)
+                    p(&#x27;Q_A&#x27;, &#x27;MatMul&#x27;, d, c[&#x27;q_lora_rank&#x27;], role=&#x27;query_low_rank&#x27;, dtype=&#x27;fp8&#x27;)</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-v41-verification" data-category="V4.1 / DSpark">
+<p class="formula-category">V4.1 / DSpark</p><h2>V4.1 主模型验证使用真实多 query 图</h2>
+<pre class="equation">Q_verify=k+1, k∈{0,…,5}; T_verify(k)=Σ_native_ops T_op(B,Q=k+1,S=I+O); Q_head,verify=k+1</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>每个query宽度单独建立并评估投影、attention、MoE、压缩边界和输出头；不是把单token延迟乘k+1。decode使用end-context I+O，未逐位置积分。k=0使用真实单query基线，关闭所有draft计算、初始化和draft传输。原始CSA2/FP4/mHC仍含明确列出的native kernel代理，不是实测融合内核。</p>
+<p class="source-location">代码：<code>llm_perf/tools/deepseek_v41.py:140</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">58df35f4511b7f4d21b54f0cdae73f004d499e971174af0ac0d908bef944f3a3</p><pre>
+def build_graph(config, *, input_len=16384, output_len=4096, batch=1, policy=&#x27;packed&#x27;, revision=REVISION, decode_query_len=1):
+    if policy not in {&#x27;packed&#x27;, &#x27;reference&#x27;}:
+        raise ValueError(&#x27;policy must be packed or reference&#x27;)
+    if isinstance(decode_query_len, bool) or not isinstance(decode_query_len, int) or decode_query_len &lt; 1:
+        raise ValueError(&#x27;decode_query_len must be a positive integer&#x27;)
+    c, schedule = text_config(config), layer_schedule(config)
+    model = _model_dict_from_spec(build_spec(config, input_len=input_len, output_len=output_len, batch=batch))
+    model.update(execution_policy=policy, decode_query_len=decode_query_len, layer_schedule=schedule, cache_layer_specs=[],
+        mtp_config={&#x27;enabled&#x27;: False}, mtp_model=&#x27;dspark_disabled&#x27;,
+        dspark={k: v for k, v in c.items() if k.startswith(&#x27;dspark_&#x27;) or k == &#x27;num_nextn_predict_layers&#x27;},
+        vision_config=copy.deepcopy(config.get(&#x27;vision_config&#x27;, {})),
+        cache_memory=cache_memory(config, seq_len=input_len+output_len, policy=policy),
+        weight_inventory=weight_inventory(config),
+        modeling_limitations=[
+            &#x27;Text-only main/verification graph, no measured inference or quality evaluation; DSpark forward costs are provided by the separate draft graph.&#x27;,
+            &#x27;Packed policy uses CED decoder bounded replay and candidate-limited index scoring; reference policy uses full-depth prefill and dense index scoring.&#x27;,
+            &#x27;Native MHA uses gathered sparse lengths and a bandwidth proxy for shared packed KV; no measured fused CSA2 kernel.&#x27;,
+            &#x27;mHC uses an unfused primitive proxy; Single-Pass/Mega-mHC fusion and scheduling speedups are not modeled.&#x27;,
+            &#x27;Compressor pooling, Engram gate and router selection use existing primitive proxies; no token-dependent routing imbalance, allocator or workspace trace.&#x27;,
+            &#x27;Verification widths use multi-query operator shapes at end context; no production speculative scheduler or causal-mask kernel is modeled.&#x27;,</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-dspark-forward" data-category="V4.1 / DSpark">
+<p class="formula-category">V4.1 / DSpark</p><h2>DSpark：三层 SWA、固定五个并行位置</h2>
+<pre class="equation">Q_draft=5; L_draft=3; Q_main,decode=H_reconcile∈{1,…,6}; Q_main,init=min(I,W) [packed]; MAC_main_proj=BQ_main(D×N_target)D; MAC_LM=B×5×D×V; MAC_Markov=B×5×R×V; MAC_confidence=B×5×(D+R)</pre>
+<p class="variables">D=hidden；N_target=dspark_target_layer_ids长度；V=vocab_size；R=dspark_markov_rank；不含Transformer内部MAC。</p><p>三层与五位置来自此V4.1 checkpoint配置。main hidden先投影/归一化，再为每个SWA层种下main KV；decode随后执行全部五位置的Transformer、共享LM head、逐位置Markov embedding/head与confidence head。选择较短验证prefix不会缩短draft forward。main_hidden_tokens默认1；显式部署取H_reconcile=6，对最多六个已验证hidden执行解析批量投影与cache重整的保守计费，仍保留完整五个候选位置。这是调度假设，不是开源单位置forward的生产调度实现。初始化只投影main hidden并填充窗口KV，不运行完整噪声位置栈。reference初始化使用完整I。开源forward未提供完整生产speculative调度或接受前缀cache重整，当前解析模型不能声称已复现其生产实现。</p>
+<p class="source-location">代码：<code>llm_perf/tools/deepseek_v41_dspark.py:98</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">81610af909934542b151ee4bbaf33396d91d9b0146de2d7993dca6b3470b1c12</p><pre>
+def build_dspark_graph(config, *, input_len=16384, output_len=4096, batch=1,
+                       block_size=None, revision=REVISION, policy=&#x27;packed&#x27;, main_hidden_tokens=1):
+    &quot;&quot;&quot;Construct full configured DSpark forward, independent of accepted prefix.
+
+    Prefill projects the main target hidden states and seeds only local caches.
+    Decode computes every draft position. Additional main hidden positions charge
+    an analytical cache-reconciliation prefix before the one-position forward;
+    the released forward itself only accepts one main position at decode.
+    ``block_size`` must match the checkpoint; it is not a truncated-forward knob.
+    &quot;&quot;&quot;
+    c = _config(config)
+    block = c[&#x27;dspark_block_size&#x27;]
+    if isinstance(main_hidden_tokens, bool) or not isinstance(main_hidden_tokens, int) or not 1 &lt;= main_hidden_tokens &lt;= block+1:
+        raise ValueError(&#x27;main_hidden_tokens must be an integer in 1..block_size+1&#x27;)
+    if block_size is not None and (isinstance(block_size, bool) or not isinstance(block_size, int) or block_size != block):
+        raise ValueError(&#x27;block_size must match configured DSpark full forward&#x27;)
+    graph = build_graph(_transformer_config(c), input_len=input_len, output_len=output_len,
+        batch=batch, policy=policy, revision=revision, decode_query_len=block)
+    init_tokens = min(input_len, c[&#x27;sliding_window&#x27;]) if policy == &#x27;packed&#x27; else input_len
+    model = graph[&#x27;model&#x27;]</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-dspark-residency" data-category="V4.1 / DSpark">
+<p class="formula-category">V4.1 / DSpark</p><h2>DSpark 物理权重与共享 embedding/head 驻留</h2>
+<pre class="equation">W_shared=6VD; W_Markov=6VR; W_main_proj=(DN_target)D+ceil(DN_target/32)ceil(D/32); W_confidence=4(D+R); W_rank=W_replicated+W_TP/TP+W_experts/EP; M_candidate=L_draft×5×(d+ceil(d/32)) [packed]</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>embedding为BF16，runtime LM/Markov head为FP32，因此分别合计6 bytes/参数对。共享是参数身份；独立draft设备仍须驻留embedding/head。只有同pool已经保留main共享权重时可设shared_head_resident=False扣除增量重复项。main projection使用FP8及32×32二维scale；Markov与confidence为private。candidate KV scratch单列，不能把该值当完整activation/logits/allocator workspace。</p>
+<p class="source-location">代码：<code>llm_perf/tools/deepseek_v41_dspark.py:48</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">81610af909934542b151ee4bbaf33396d91d9b0146de2d7993dca6b3470b1c12</p><pre>
+def dspark_weight_inventory(config, *, tp=1, ep=1, shared_head_resident=True):
+    &quot;&quot;&quot;Physical runtime weights per draft pool, excluding the backbone itself.
+
+    Set shared_head_resident=False only for the incremental allocation on a pool
+    already retaining the main embedding and head. Markov weights remain private.
+    &quot;&quot;&quot;
+    c = _config(config)
+    if not isinstance(shared_head_resident, bool):
+        raise ValueError(&#x27;shared_head_resident must be boolean&#x27;)
+    inv = weight_inventory(_transformer_config(c), tp=tp, ep=ep)
+    d, vocab, rank = c[&#x27;hidden_size&#x27;], c[&#x27;vocab_size&#x27;], c[&#x27;dspark_markov_rank&#x27;]
+    width = d*len(c[&#x27;dspark_target_layer_ids&#x27;])
+    projection = width*d + math.ceil(width/32)*math.ceil(d/32)
+    extra_replicated = projection + d*2 + (d+rank)*4  # main norm; FP32 confidence
+    extra_sharded = vocab*rank*6  # private BF16 Markov embedding + FP32 head
+    shared = vocab*d*6
+    inv[&#x27;replicated_nonexpert_bytes&#x27;] += extra_replicated
+    inv[&#x27;tp_sharded_bytes&#x27;] += extra_sharded - (0 if shared_head_resident else shared)
+    inv[&#x27;private_weight_bytes&#x27;] = inv[&#x27;text_weight_bytes&#x27;] + extra_replicated + extra_sharded - shared
+    inv[&#x27;text_weight_bytes&#x27;] = inv[&#x27;private_weight_bytes&#x27;] + (shared if shared_head_resident else 0)</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-deployment-finite-output" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>有限输出的条件接受率与完整尾块计费</h2>
+<pre class="equation">n_0=O−1; s_0=1; s_j=∏_(i=1)^j a_i; P_k(j)=s_j(1−a_(j+1)) [j&lt;k], P_k(k)=s_k; E_k=1+Σ_(j=1)^k s_j; V_(O−1)=1; k=min(K,n); V_(n−min(n,j+1)) += V_n×P_k(j); N_k=Σ_(n:k=min(K,n)) V_n</pre>
+<p class="variables">a_i=在前i−1个提案接受条件下的第i个接受率，必须有限且在[0,1]；V_n=剩余n状态的期望访问次数；N_k=宽度k+1验证的期望cycle数。</p><p>prefill已经产生首token，仅对O−1运行递推。按剩余n从大到小传播访问概率；n=0吸收，不再发起cycle。尾块输出取min(n,j+1)，不能多记O以外的token，也不能简单用(O−1)/E估算有限输出cycle数。K为候选固定prefix cap，0≤K≤min(5,O−1)；每个cap都重新计算所有pool/link总需求再比较吞吐。均值服务需求是fluid上界，不含同步batch straggler和队列。</p><p class="example">手算示例：O=3,K=1,a_1=0.5：第1轮后概率1/2还剩1个token，cycle数=1+1/2 → <strong>1.5 expected cycles</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/deployment_modes.py:188</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159</p><pre>
+def _cycle_counts(remaining, cap, probabilities):
+    &quot;&quot;&quot;Expected visits to each query prefix, with finite-output clipping.&quot;&quot;&quot;
+    visits = [0.0] * (remaining + 1)
+    visits[remaining] = 1.0
+    counts = [0.0] * 6
+    for left in range(remaining, 0, -1):
+        k = min(cap, left)
+        counts[k] += visits[left]
+        survival = 1.0
+        for accepted in range(k):
+            probability = survival * (1 - probabilities[accepted])
+            visits[max(0, left - accepted - 1)] += visits[left] * probability
+            survival *= probabilities[accepted]
+        visits[max(0, left - k - 1)] += visits[left] * survival
+    return counts
+
+
+def _candidate(config, timings, probabilities, cap, output, batch):
+    counts = _cycle_counts(output - 1, cap, probabilities)
+    speculative_cycles = sum(counts[1:])</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-demand" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>共享 pool、链路瓶颈与解析 prefix 策略</h2>
+<pre class="equation">D_r=P_r+Σ_(k=0)^5 N_k T_verify,r(k)+Σ_(k=1)^5 N_k T_draft,r+1_(K&gt;0)T_draft_init,r+1_(O&gt;1)T_decode_init,r; D_pool=Σ_(roles on pool)D_role; RPS=B/max_r D_r; output_TPS=O×RPS; K*=argmax_K output_TPS(K)</pre>
+<p class="variables">D_r=完成一个整batch请求workload对资源r的服务秒数；link项与pool项采用相同频率累计；K=固定prefix cap，实际k随尾部n截短。</p><p>B始终是整个pool的并发请求batch，所有输入timing是整batch秒数。native接口的每attention replica batch须由调用方显式换算；不足整组的DP负载按整数向上补齐，服务时间包含padding工作但吞吐分子只记实际B个请求。pool内角色先相加，共用物理链路按同一link ID合并；然后才在全部pool与link中找瓶颈。P与D共池必须相加，不能拿min(P吞吐,D吞吐)假定并行。draft每cycle完整五位置，不乘k/5；initialization只收一次。k=0完全去掉draft需求。各模式GPU/LPU数可能不同，不用未标注TPS/GPU把LPUs当作免费资源。</p>
+<p class="source-location">代码：<code>llm_perf/core/deployment_modes.py:205</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159</p><pre>
+def _candidate(config, timings, probabilities, cap, output, batch):
+    counts = _cycle_counts(output - 1, cap, probabilities)
+    speculative_cycles = sum(counts[1:])
+    initialization = float(speculative_cycles &gt; 0)
+    stage = {
+        &#x27;prefill&#x27;: dict(timings[&#x27;prefill&#x27;]),
+        &#x27;verify&#x27;: {r: sum(c * v for c, v in zip(counts, curve)) for r, curve in timings[&#x27;verify&#x27;].items()},
+        &#x27;draft&#x27;: {r: v * speculative_cycles for r, v in timings[&#x27;draft&#x27;].items()} if initialization else {},
+        &#x27;draft_init&#x27;: {r: v for r, v in timings[&#x27;draft_init&#x27;].items()} if initialization else {},
+    }
+    pool_demands = dict.fromkeys(config[&#x27;pools&#x27;], 0.0)
+    for role_costs in stage.values():
+        for role, seconds in role_costs.items():
+            pool_demands[config[&#x27;role_to_pool&#x27;][role]] += seconds
+    link_demands = {link: value[&#x27;prefill_seconds&#x27;] + sum(c * v for c, v in zip(counts, value[&#x27;verify_seconds&#x27;]))
+                   + speculative_cycles * value[&#x27;draft_seconds&#x27;] + initialization * value[&#x27;draft_init_seconds&#x27;]
+                   + int(output &gt; 1) * value[&#x27;decode_init_seconds&#x27;]
+                   for link, value in timings[&#x27;links&#x27;].items()}
+    demands = {**{f&#x27;pool:{p}&#x27;: v for p, v in pool_demands.items()},
+               **{f&#x27;link:{link}&#x27;: v for link, v in link_demands.items()}}</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-latency" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>首token、PD迁移与串行用户时延</h2>
+<pre class="equation">TTFT=Σ_roles T_prefill+Σ_links T_prefill_link; T_e2e=Σ_pools D_pool+Σ_links D_link; TPOT=(T_e2e−TTFT)/(O−1) [O&gt;1]; TPOT=null [O=1]</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>prefill包含最后单位置输出头，首token已经发出。PD cache迁移放入decode_init_seconds：首token后一次，仅O&gt;1时收取且k=0也收取；draft_init_seconds则只在k&gt;0时收取。O=1没有decode/draft初始化工作。AF prefill链路属于首token依赖并计入TTFT。这里串行累加的是无排队解析用户时延；pipeline稳态吞吐另按最大资源需求计算。</p>
+<p class="source-location">代码：<code>llm_perf/core/deployment_modes.py:228</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159</p><pre>    _number(demand, &#x27;bottleneck workload demand&#x27;, positive=True)
+    ttft = sum(stage[&#x27;prefill&#x27;].values()) + sum(v[&#x27;prefill_seconds&#x27;] for v in timings[&#x27;links&#x27;].values())
+    latency = sum(pool_demands.values()) + sum(link_demands.values())
+    requests = batch / demand
+    return dict(chosen_k=cap, expected_tokens_per_cycle=(output - 1) / sum(counts) if sum(counts) else 0,
+                expected_emitted_tokens=expected_emitted_tokens(probabilities, cap),
+                expected_decode_cycles=sum(counts), expected_cycles_by_k=counts,
+                output_tps=requests * output, requests_per_second=requests,
+                ttft_seconds=ttft, end_to_end_seconds=latency,
+                tpot_seconds=(latency - ttft) / (output - 1) if output &gt; 1 else None,
+                pool_demands_seconds=pool_demands, link_demands_seconds=link_demands,
+                stage_demands_seconds=stage, bottleneck=bottleneck,
+                bottleneck_demand_seconds=demand)
+
+
+def evaluate_mode(config, timings):
+    &quot;&quot;&quot;Evaluate one explicit allocation; errors stay visible as nonfeasible rows.
+
+    Result: feasible/status/error, all timing metrics in seconds, output_tps,
+    requests_per_second, chosen_k, expected_tokens_per_cycle (including final-tail
+    clipping), expected_emitted_tokens (untruncated E at selected cap),</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-link" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>显式物理链路的带宽与逐消息启动开销</h2>
+<pre class="equation">T_transfer=bytes/(BW_GBps×10^9)+messages×latency_ns/10^9; D_link=T_prefill+1_(O&gt;1)T_decode_init+Σ_k N_k T_verify(k)+Σ_(k≥1)N_k T_draft+1_(K&gt;0)T_draft_init</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>链路速率和延迟必须显式给出且有限，BW&gt;0。PD传输实际选定的共享global KV、compressor state、local窗口和需要的bounded replay状态；保留/传输或重建窗口策略须在allocation假设中说明。AF逐层双向传输；draft传main hidden、提案ID/概率、接受prefix反馈，调用侧按阶段各计一次。相同物理链路上的这些需求必须合并，不能当独立带宽资源。</p>
+<p class="source-location">代码：<code>scripts/evaluate_deployment_modes.py:92</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1</p><pre>
+def transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):
+    values = (byte_count, bandwidth_GBps, latency_ns, messages)
+    if any(isinstance(v, bool) or not math.isfinite(v) for v in values):
+        raise ValueError(&#x27;Transfer inputs must be finite numbers&#x27;)
+    if byte_count &lt; 0 or bandwidth_GBps &lt;= 0 or latency_ns &lt; 0 or messages &lt; 0:
+        raise ValueError(&#x27;Invalid transfer size, bandwidth, latency or message count&#x27;)
+    return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9
+
+
+def write_dataset(path, document):
+    &quot;&quot;&quot;Serialize before replacing so invalid data cannot damage the old output.&quot;&quot;&quot;
+    body = (json.dumps(document, ensure_ascii=False, sort_keys=True,
+                       separators=(&#x27;,&#x27;, &#x27;:&#x27;), allow_nan=False)+&#x27;\n&#x27;).encode()
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:
+            temporary = handle.name
+            handle.write(body)</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-af" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>V4.1 AF 双向传输保留 mHC stream 宽度</h2>
+<pre class="equation">Q_P= floor(L/2)I + (L−floor(L/2))min(I,W); bytes_AF,P=BQ_P×D×m×2×2; bytes_AF,verify=B×L×(k+1)×D×m×2×2; messages_AF=2L</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>packed CED的encoder全prompt、decoder有界窗口分别累计。一个2来自BF16 bytes，一个2来自每层A→F和F→A；m=hc_mult，不能只传D忽略残差stream宽度。这里为保守完整mHC stream传输；边界是每层而不是整stack一次。跨硬件stage单独跑各自native timing，不能把GPU延迟重标为LPU。</p>
+<p class="source-location">代码：<code>scripts/evaluate_deployment_modes.py:81</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1</p><pre>
+def af_transfer_work(*, batch, input_len, query_len, hidden, layers, window, streams):
+    &quot;&quot;&quot;Conservative full mHC residual-stream transfer in both directions per layer.&quot;&quot;&quot;
+    values = (batch, input_len, query_len, hidden, layers, window, streams)
+    if any(not isinstance(v, int) or isinstance(v, bool) or v &lt; 1 for v in values):
+        raise ValueError(&#x27;AF dimensions must be positive integers&#x27;)
+    tokens = (layers//2)*input_len + (layers-layers//2)*min(input_len, window)
+    width = hidden*streams*2*2  # BF16 residual streams, two boundaries.
+    return dict(prefill_bytes=batch*tokens*width,
+                verify_bytes=batch*layers*query_len*width, messages=2*layers)
+
+
+def transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):
+    values = (byte_count, bandwidth_GBps, latency_ns, messages)
+    if any(isinstance(v, bool) or not math.isfinite(v) for v in values):
+        raise ValueError(&#x27;Transfer inputs must be finite numbers&#x27;)
+    if byte_count &lt; 0 or bandwidth_GBps &lt;= 0 or latency_ns &lt; 0 or messages &lt; 0:
+        raise ValueError(&#x27;Invalid transfer size, bandwidth, latency or message count&#x27;)
+    return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9
+
+</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-memory-reserve" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>整数 DP 负载与逐设备 activation reserve</h2>
+<pre class="equation">B_A=ceil(B/DP_A); B_pad=B_A×DP_A; B_F=ceil(B_pad/DP_F); B_live=max(1_A B_A,1_F B_F); Q_reserve=max(I if prefill role else 6,6); M_live,main=4B_live Q_reserve Dm+1_A×24B_A V; M_live,draft=B_A(M_candidate+24V)+24max(B_A,B_F)Dm; M_required=W_device+M_persistent+M_live</pre>
+<p class="variables">1_A/1_F=pool是否持有attention/FFN角色；D=hidden；m=hc_mult；V=vocab_size；DP_A/DP_F=对应角色replica数。</p><p>B是实际整个pool请求batch；B_A为每attention replica整数负载，B_F由补齐后的B_pad换算到FFN replica。A/F同pool取较大活跃batch，FFN独占pool用B_F，不能错误套用B_A。主模型attention cache按B_A倍、上下文I+O+6计入，FFN-only不持有KV；draft cache上下文I+O，candidate scratch单列。激活系数4为BF16双缓冲，24V为六位置FP32 logits。这里是显式保守reserve，不是完整allocator/kernel workspace测量，也不等价于旧MTP准入的0.9×HBM规则。</p>
+<p class="source-location">代码：<code>scripts/evaluate_deployment_modes.py:137</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1</p><pre>
+    def populate_memory(self, pools, roles):
+        from llm_perf.tools.deepseek_v41 import weight_inventory, cache_memory
+        from llm_perf.tools.deepseek_v41_dspark import dspark_weight_inventory, dspark_cache_memory
+        c = self.text
+        for identity, pool in pools.items():
+            assigned = {r for r, p in roles.items() if p == identity}
+            draft = &#x27;draft&#x27; in assigned
+            mapping = parallel_mapping(pool[&#x27;count&#x27;], experts=c[&#x27;dspark_n_routed_experts&#x27;] if draft else c[&#x27;n_routed_experts&#x27;])
+            local_batch = math.ceil(self.batch/mapping[&#x27;attn_dp&#x27;])
+            padded_batch = local_batch*mapping[&#x27;attn_dp&#x27;]
+            ffn_batch = math.ceil(padded_batch/mapping[&#x27;ffn_dp&#x27;])
+            if draft:
+                inv = dspark_weight_inventory(self.config, tp=mapping[&#x27;attn_tp&#x27;], ep=mapping[&#x27;ffn_ep&#x27;])
+                cache = dspark_cache_memory(self.config, seq_len=self.input_len+self.output_len)
+                weights = inv[&#x27;per_gpu_weight_bytes&#x27;]
+                persistent = local_batch * cache[&#x27;runtime_bytes&#x27;]
+                scratch = local_batch * (cache[&#x27;candidate_kv_workspace_bytes&#x27;] + 6*c[&#x27;vocab_size&#x27;]*4)
+                scratch += max(local_batch,ffn_batch)*6*c[&#x27;hidden_size&#x27;]*c[&#x27;hc_mult&#x27;]*2*2
+            else:
+                inv = weight_inventory(self.config, tp=mapping[&#x27;attn_tp&#x27;], ep=mapping[&#x27;ffn_ep&#x27;], engram_shards=pool[&#x27;count&#x27;])</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-capacity" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>显式 pool 的逐设备容量准入与资源总数</h2>
+<pre class="equation">feasible ⇔ ∀pool: M_required,device≤M_capacity,device; N_GPU=Σ_GPU_pools count; N_LPU=Σ_LPU_pools count; active_count=Σ_(D_pool&gt;0) count</pre>
+<p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>容量输入是per-device而非整pool总量；设备数独立统计。role共享pool时物理数量只计一次，已分配但k=0闲置的draft仍在allocated总数中，active另列。需求须由实际放置后的weights/cache/live workspace组成，不能拿总模型除芯片数替代所有权。缺少LPU容量返回unsupported，显存不足返回infeasible，非有限/负参数返回invalid；均不进入可行吞吐胜者。没有假造groq-lpx3可用memory或校准kernel速度。</p>
+<p class="source-location">代码：<code>llm_perf/core/deployment_modes.py:148</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159</p><pre>        _integer(pool.get(&#x27;count&#x27;), f&#x27;pool {pool_id} count&#x27;)
+        required = _number(pool.get(&#x27;memory_required_bytes&#x27;), f&#x27;pool {pool_id} per-device memory requirement&#x27;)
+        if pool.get(&#x27;memory_capacity_bytes&#x27;) is None:
+            raise _ContractError(f&#x27;pool {pool_id} has no explicit per-device memory capacity&#x27;, &#x27;unsupported&#x27;)
+        capacity = _number(pool[&#x27;memory_capacity_bytes&#x27;], f&#x27;pool {pool_id} memory capacity&#x27;, positive=True)
+        if required &gt; capacity:
+            raise _ContractError(f&#x27;pool {pool_id} needs {required:g} bytes/device but capacity is {capacity:g}&#x27;, &#x27;infeasible&#x27;)
+    pref_roles = {r for r in roles if r in (&#x27;ALL&#x27;, &#x27;P&#x27;, &#x27;PA&#x27;, &#x27;PF&#x27;)}
+    dec_roles = {r for r in roles if r in (&#x27;ALL&#x27;, &#x27;D&#x27;, &#x27;DA&#x27;, &#x27;DF&#x27;)}
+    if config[&#x27;mode_id&#x27;] == &#x27;all_gpu&#x27; and len(used_pools) != 1:
+        raise _ContractError(&#x27;all_gpu requires one shared pool&#x27;)
+    if config[&#x27;mode_id&#x27;] in (&#x27;pd_gpu&#x27;, &#x27;pd_draft_gpu&#x27;, &#x27;pd_draft_lpu&#x27;):
+        p_pools, d_pools = {roles[r] for r in pref_roles}, {roles[r] for r in dec_roles}
+        if len(p_pools) != 1 or len(d_pools) != 1 or p_pools &amp; d_pools:
+            raise _ContractError(&#x27;PD modes require distinct complete P and D pools&#x27;)
+        if &#x27;draft&#x27; in roles and roles[&#x27;draft&#x27;] in p_pools | d_pools:
+            raise _ContractError(&#x27;PD draft modes require a distinct draft pool&#x27;)
+    normalized = {}
+    for phase, required_roles in [(&#x27;prefill&#x27;, pref_roles), (&#x27;verify&#x27;, dec_roles),
+                                   (&#x27;draft&#x27;, {&#x27;draft&#x27;} if mode[&#x27;draft_enabled&#x27;] else set()),
+                                   (&#x27;draft_init&#x27;, {&#x27;draft&#x27;} if mode[&#x27;draft_enabled&#x27;] else set())]:</pre></details>
+<p class="references"></p></article></section><p id="formula-empty" hidden>没有匹配的公式。</p>
+<footer><p>重新生成：<code>python scripts/build_formula_pages.py</code>；检查源文件是否漂移：<code>python scripts/build_formula_pages.py --check</code></p></footer>
+</main><script src="js/formula-explorer.js" defer></script></body></html>

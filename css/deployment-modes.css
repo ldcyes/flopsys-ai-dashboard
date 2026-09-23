@@ -1,0 +1,22 @@
+.deployment-panel { margin: 1.5rem auto; padding: 1rem; border: 1px solid #bac6d5; border-radius: 10px; background: #fff; color: #17283b; max-width: 1400px; min-width: 0; }
+.deployment-panel summary { cursor: pointer; font-weight: 600; padding: .5rem 0; }
+.deployment-panel p, .deployment-panel li { line-height: 1.55; overflow-wrap: anywhere; }
+.deployment-panel a { color: #185b9b; text-decoration: underline; }
+.deployment-panel h2, .deployment-panel h3, .deployment-panel h4, .deployment-panel h5 { margin: .8rem 0; overflow-wrap: anywhere; }
+.deployment-controls { display: flex; flex-wrap: wrap; gap: 1rem; margin: 1rem 0; }
+.deployment-controls label { display: flex; flex-direction: column; gap: .4rem; min-width: 0; max-width: 100%; }
+.deployment-controls select, .deployment-panel button { padding: .55rem; font: inherit; border: 1px solid #8193a5; border-radius: 5px; background: white; color: #17283b; max-width: 100%; }
+.deployment-panel button { cursor: pointer; }
+.deployment-panel :focus-visible { outline: 3px solid #156cb2; outline-offset: 3px; }
+.deployment-mode { border-top: 1px solid #d7dfe8; margin-top: 1rem; padding-top: .5rem; }
+.deployment-row { padding: .75rem; margin: .75rem 0; background: #f5f8fb; border-radius: 6px; }
+.deployment-table-wrap { overflow-x: auto; max-width: 100%; }
+.deployment-panel table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+.deployment-panel th, .deployment-panel td { text-align: left; padding: .5rem; border-bottom: 1px solid #d7dfe8; white-space: nowrap; }
+.deployment-feasible { color: #17643b; }
+.deployment-infeasible, .deployment-unsupported, .deployment-missing { color: #795009; }
+.deployment-assumptions pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .8rem; }
+.deployment-page { margin: 0; padding: 1rem; background: #edf2f7; font-family: system-ui, sans-serif; }
+@media(max-width:600px) { .deployment-page { padding: .5rem; } .deployment-panel { padding: .65rem; } .deployment-controls { display: grid; } .deployment-row { padding: .5rem; } }
+
+.deployment-nav { display: flex; flex-wrap: wrap; gap: .75rem 1rem; margin-bottom: 1rem; }

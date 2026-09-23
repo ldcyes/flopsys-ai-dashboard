@@ -63,8 +63,8 @@ const CONFIG_FIELDS = [
 const STRATEGY_STYLES = {
     monolithic: { label: 'monolithic', color: '#94a3b8' },
     mtp: { label: 'mtp', color: '#f59e0b' },
-    pd: { label: 'mtp + pd', color: '#34d399' },
-    af: { label: 'mtp + pd + af', color: '#c084fc' }
+    pd: { label: 'PD', color: '#34d399' },
+    af: { label: 'AF', color: '#c084fc' }
 };
 const STRATEGY_FILTER_OPTIONS = ['mtp', 'pd', 'af'];
 const DEFAULT_STRATEGY_FILTER_OPTIONS = STRATEGY_FILTER_OPTIONS;
@@ -75,8 +75,8 @@ const STRATEGY_FEATURE_LABELS = {
 };
 const STRATEGY_FILTER_LABELS = {
     mtp: 'MTP',
-    pd: 'MTP + PD',
-    af: 'MTP + PD + AF'
+    pd: 'PD',
+    af: 'AF'
 };
 const FIXED_ATTENTION_CP_VALUES = ['1', '2', '4', '8'];
 const FIXED_MTP_STAGES = Array.from({ length: 10 }, (_, index) => String(index));
@@ -898,6 +898,11 @@ function descriptorSelectionKey(descriptors) {
     return descriptors.map(descriptor => descriptor.path).sort().join('|');
 }
 
+function strategyCoverageNote(points) {
+    if (!points.length || points.some(point => strategyFeatures(point).has('pd'))) return '';
+    return ' No PD candidates are present in these loaded datasets. PD and PD+MTP need compatible prefill results and P/D split-size source runs; selecting a feature cannot generate missing candidates.';
+}
+
 async function loadVisiblePayloads() {
     const requestId = ++state.requestId;
     const selectedDescriptors = visibleStrategyDescriptors();
@@ -939,7 +944,7 @@ async function loadVisiblePayloads() {
     state.pointDescriptors = pointDescriptors;
     populateFilters(points);
     renderFiltered();
-    const suffix = failed.length ? ` ${failed.length} payload failed to load.` : '';
+    const suffix = failed.length ? ` ${failed.length} payload failed to load.` : strategyCoverageNote(points);
     setNote(points.length ? `Loaded ${formatInt(points.length)} strategy points from ${selectedDescriptors.length} selected dataset(s).${suffix}` : `No strategy points found.${suffix}`);
 }
 

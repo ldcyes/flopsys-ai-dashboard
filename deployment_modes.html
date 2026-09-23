@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>V4.1 部署比较 · Flopsys AI</title>
+    <link rel="stylesheet" href="css/deployment-modes.css">
+</head>
+<body class="deployment-page">
+<main class="deployment-panel">
+    <nav class="deployment-nav" aria-label="主要页面"><a href="index.html">Overview</a><a href="leaderboard.html">Hardware Ranking</a><a href="tco.html">TCO</a><a href="expert_fc_utilization.html">Expert FC Utilization</a><a href="author.html">Author</a></nav>
+    <nav aria-label="公式页面"><a href="index.html">Overview</a> · <a href="hardware_formulas.html">硬件公式</a> · <a href="algorithm_formulas.html">算法公式</a></nav>
+    <h1>DeepSeek V4.1：六种部署方式</h1>
+    <p>分析模型估计，并非真实推理测量。P/D 为 prefill/decode；A/F 为 attention/FFN；draft 为 DSpark 草稿模型。</p>
+    <p>每个配置列出实际 GPU 与 LPU 数量。不同资源预算不能直接视为公平竞赛；未按成本排序或选出通用赢家。批量表示整个资源池的并发请求数。</p>
+    <p>模式 5 按 PA(GPU)、PF(LPU)、DA(GPU)、DF(LPU) 解读。条件接受率、末端上下文近似及硬件假设见下方来源与假设。</p>
+    <div data-deployment-root></div>
+</main>
+<script type="module" src="js/deployment-modes.js?v=v41-deployment-v1"></script>
+</body>
+</html>

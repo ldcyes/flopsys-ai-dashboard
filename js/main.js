@@ -12,7 +12,7 @@ import {
     initStrategyParetoPanel,
     resetStrategyDescriptorSelection,
     updateStrategyParetoPanel
-} from './strategy-pareto.js?v=display-data-v2';
+} from './strategy-pareto.js?v=display-data-v2-v41';
 
 let webInputs = null;
 let batchInputOptions = batchOptions;

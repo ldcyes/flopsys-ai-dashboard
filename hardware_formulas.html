@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>硬件计算 Formula - Flopsys AI</title><link rel="stylesheet" href="css/styles.css"><link rel="stylesheet" href="css/formulas.css"></head>
+<body><nav class="navbar"><div class="nav-left"><div class="logo">Flopsys AI</div><div class="nav-links">
+<a href="index.html" class="nav-link">Overview</a><a href="leaderboard.html" class="nav-link">Hardware Ranking</a><a href="tco.html" class="nav-link">TCO</a><a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a><a href="deployment_modes.html" class="nav-link">Deployment Modes</a><a href="author.html" class="nav-link">Author</a>
+</div></div></nav><main class="container formula-page"><header><p class="eyebrow">Source-backed equation reference</p><h1>硬件计算 Formula</h1>
+<p>基于本地修复后的 <strong>working-tree</strong> 生成；不是未修改的 main，也不是已通过实测校准的性能承诺。</p>
+<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">ff89466576f7b872faafd6523cc86f66251dc25c27b29f1d8adb894b325f7d3c</code></p>
+<p><a href="algorithm_formulas.html">切换硬件 / LLM 算法公式</a> · <a href="data/hardware_formulas.json">下载 JSON 与源码指纹</a></p>
+<p class="formula-limits">范围：数学形状、tile执行成本、混合精度驻留、通信与调度分别列明。DSA/V4参考算子、完整MTP与V4.1 / DSpark独立部署公式已展开；有限输出、共享pool和链路需求单列。GPU与LPUs资源分别计数，模式预算可能不同。融合调度、接受率、后端工作区和队列仍是执行假设，不等于已完成性能校准。</p></header>
+<section class="formula-controls" aria-label="公式筛选"><label for="formula-search">搜索公式、变量或代码<input type="search" id="formula-search" placeholder="top-k / KV / MTP / bandwidth"></label>
+<label for="formula-category">类别<select id="formula-category"><option value="">全部</option><option>互联</option><option>内存</option><option>容量</option><option>执行模型</option><option>算力</option><option>通信</option></select></label><p id="formula-count" aria-live="polite">24 条公式</p></section>
+<section id="formula-list"><article class="formula-card" id="hw-vocab-allgather" data-category="通信">
+<p class="formula-category">通信</p><h2>词表分片输出 AllGather</h2>
+<pre class="equation">S_local=B_local×Q×ceil(V/TP)×b_logits; T_ring=(TP−1)×[S_local/BW+latency]</pre>
+<p class="variables">S_local为每rank逻辑logits分片字节；时间单位需将GB/s转换为bytes/ns；TP=1时为0。</p><p>主模型和draft的输出head均聚合词表分片，不用AllReduce替代。使用输出logits精度和逻辑形状，不用GEMM填充tile或输入精度。多节点ring采用NIC瓶颈的保守解析策略；真实collective算法需后端实测。</p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/comm.cpp:637</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71</p><pre>// nodes is limited by its NIC links; no allreduce factor or reduction is used.
+static double llm_cost_ring_all_gather_time(
+    double local_shard_bytes, int ranks, int gpu_per_node,
+    double scale_bw, double scale_latency, double switch_latency,
+    double nic_bw, double nic_latency
+) {
+    if (ranks &lt;= 1) return 0.0;
+    const bool crosses_node = gpu_per_node &gt; 0 &amp;&amp; ranks &gt; gpu_per_node;
+    const double bandwidth = crosses_node &amp;&amp; nic_bw &gt; 0.0 ? nic_bw : scale_bw;
+    const double hop_latency = crosses_node &amp;&amp; nic_latency &gt; 0.0 ? nic_latency
+        : (switch_latency &gt; 0.0 ? switch_latency : scale_latency);
+    return llm_comm_transfer_time_ns(
+        std::max(local_shard_bytes, 0.0) * (ranks - 1), bandwidth, hop_latency, ranks - 1);
+}
+
+struct LlmEpTransport {
+    double wire_endpoint_bytes;
+    double local_bandwidth_time_ns;
+    double remote_bandwidth_time_ns;
+    double total_time_ns;
+};</pre></details>
+<p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> <a href="https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/collectives.html#allgather" rel="noreferrer">参考来源 2</a> </p></article><article class="formula-card" id="hw-reference-fusion" data-category="算力">
+<p class="formula-category">算力</p><h2>参考算子的融合成本边界</h2>
+<pre class="equation">T_kernel=max(T_tensor,T_SIMT,T_SFU,T_memory); T_sequence=Σ_physical_kernels T_kernel</pre>
+<p class="variables">tensor_ops在native采用MAC口径；vector/SFU采用对应操作数；每类引擎各自换算时间。</p><p>投影是独立GEMM；FP8参考投影之前另有动态输入量化kernel，计入SIMT/SFU、输入读取、FP8输出及物理scale。DSA/CSA的点积、ReLU、权重和head归约留在同一物理kernel；HBM只物化统一分数，不额外写H×S中间矩阵。Compressor池化/归一化/RoPE/量化与mHC迭代也有显式融合边界。融合和引擎重叠为解析假设，非profiler测量。</p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/attention_variants.cpp:606</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">9f19613592d0ddd819948d643c53ceb68fc2bb874bc742889a9a8505235badb7</p><pre>    } else if (variant_id &gt;= 6 &amp;&amp; variant_id &lt;= 11) {
+        // Nominal vector/reduction work is not padded to a GEMM tile. The
+        // whole head reduction is local to a query tile: H*S is never HBM.
+        const double tokens = static_cast&lt;double&gt;(safe_gpu_batch) * safe_gpu_q_seq;
+        const double sm_tokens = tokens / std::max(active_sms, 1);
+        const int heads = variant_id == 7 ? std::max(static_cast&lt;int&gt;(ceil_div(index_n_heads, safe_tp)), 1) :
+            std::max(index_n_heads, 1);
+        const int dim = std::max(index_head_dim, 1);
+        const int rope = std::min(std::max(och, 0), dim);
+        const int keys = std::max(effective_kv_seq, 0);
+        const int streams = std::max(mhc_streams, 1);
+        const int mixed = streams * streams + 2 * streams;
+        out-&gt;tokens = static_cast&lt;int&gt;(tokens);
+        out-&gt;heads = 1;
+        out-&gt;m_t = std::max(static_cast&lt;int&gt;(std::ceil(sm_tokens)), 1);
+        out-&gt;n_t = safe_och;
+        out-&gt;k_t = safe_ich;
+        out-&gt;is_bypass_a = 1;
+        llm_variant_set_distinct_q_work_map(out, die_num, par_num_die, gpc_num_par, gpc_sm_num);
+        if (role_id == 10 || role_id == 11) {
+            const int transform_heads = role_id == 10 ? heads : 1;</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/kernel.py" rel="noreferrer">参考来源 1</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/model.py" rel="noreferrer">参考来源 2</a> </p></article><article class="formula-card" id="hw-reference-quantization" data-category="内存">
+<p class="formula-category">内存</p><h2>FP8 输入量化的实际工作与物理缓冲</h2>
+<pre class="equation">G=ceil(C_in/128); read_bytes=2×B_local×Q×C_in; write_bytes=B_local×Q×(C_in+G×s_a); SIMT_ops=B_local×Q×(4C_in+cG); SFU_ops=B_local×Q×G</pre>
+<p class="variables">B_local：DP调度后本rank逻辑batch；Q：query位置数；C_in：量化输入通道；s_a=4,c=2（DSA FP32 scale）或s_a=1,c=8（V4 E8M0 scale）。</p><p>每token每128通道独立absmax、缩放与FP8 cast；V4另计scale的幂次取整。尾组仍写完整scale，FP8载荷和scale都物化，后续GEMM再次读取。这里是全rank流量，native按active SM分配；算术工作是解析计数。BF16部署不生成此kernel，V4的BF16 QAT缓存不随辅助投影FP8而变成packed缓存。</p><p class="example">手算示例：{&#x27;B_local&#x27;: 2, &#x27;Q&#x27;: 1, &#x27;C_in&#x27;: 129, &#x27;s_a&#x27;: 1} → <strong>778 read + write bytes/rank</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/attention_variants.cpp:750</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">9f19613592d0ddd819948d643c53ceb68fc2bb874bc742889a9a8505235badb7</p><pre>            out-&gt;o_size = sm_tokens * safe_ich * o_bpe;
+        } else if (role_id == 42) {
+            const int groups = static_cast&lt;int&gt;(ceil_div(safe_ich, 128));
+            const int scale_bytes = variant_id == 7 ? 1 : 4;
+            // Abs/max reduction, normalization and cast. V4 additionally
+            // rounds the scale to a power of two for E8M0 storage.
+            out-&gt;simt_ops = tokens * (4.0 * safe_ich + (variant_id == 7 ? 8 : 2) * groups);
+            out-&gt;sfu_ops = tokens * groups;
+            out-&gt;b_size = sm_tokens * safe_ich * b_bpe;
+            out-&gt;o_size = sm_tokens * (safe_ich + groups * scale_bytes);
+        } else {
+            return 3;
+        }
+    } else {
+        return 2;
+    }
+
+    if (out-&gt;a_raw == 0.0) {
+        out-&gt;a_raw = out-&gt;a_size;
+    }
+    if (out-&gt;b_raw == 0.0) {</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/kernel.py" rel="noreferrer">参考来源 1</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/kernel.py" rel="noreferrer">参考来源 2</a> </p></article><article class="formula-card" id="hw-reference-gemm-bytes" data-category="内存">
+<p class="formula-category">内存</p><h2>FP8 GEMM 的 TP/DP 物理字节</h2>
+<pre class="equation">W=C_in_local×C_out_local + ceil(C_in_local/128) × ceil(C_out_local/128) × s_w; X=B_local×Q×[C_in_local+ceil(C_in_local/128)×s_a]; Y=2×B_local×Q×C_out_local</pre>
+<p class="variables">C_in_local/C_out_local：TP后的逻辑矩阵形状；B_local：DP后的逻辑batch；s_w=s_a=4（DSA）或1（V4）；W/X/Y均为bytes/rank。</p><p>FP8 E4M3乘数、FP32累加、BF16输出独立声明。列分片先取ceil(C_out/TP)，行分片先取ceil(C_in/TP)，再数每个128×128尾块scale。计算仍按Tensor tile填充，但物理权重、量化输入及输出字节使用逻辑形状。此修正仅用于识别出的index_query_projection、index_key_projection和mtp_input_fusion MatMul；内部FP8格式标记区分小矩阵scale与相同BPE的BF16，不改变公共角色或其他GEMM。</p><p class="example">手算示例：{&#x27;C_in&#x27;: 129, &#x27;C_out&#x27;: 260, &#x27;TP&#x27;: 2, &#x27;B_global&#x27;: 4, &#x27;DP&#x27;: 2, &#x27;Q&#x27;: 1, &#x27;s_w&#x27;: 1, &#x27;s_a&#x27;: 1} → <strong>17556 W + X + Y bytes/rank</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/core_process_single.cpp:368</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">71eb71f82bff51460ba1104e623a6132827c6162812022e3eb96ff29cc1a202d</p><pre>    std::string projection_role = attention_role == nullptr ? &quot;&quot; : attention_role;
+    const bool declared_reference_fp8 = projection_role.size() &gt;= 4
+        &amp;&amp; projection_role.compare(projection_role.size() - 4, 4, &quot;:fp8&quot;) == 0;
+    if (declared_reference_fp8) projection_role.resize(projection_role.size() - 4);
+    const bool reference_projection = projection_role == &quot;index_query_projection&quot;
+        || projection_role == &quot;index_key_projection&quot; || projection_role == &quot;mtp_input_fusion&quot;;
+    if (reference_projection &amp;&amp; op_type != nullptr &amp;&amp; std::strcmp(op_type, &quot;MatMul&quot;) == 0
+        &amp;&amp; a_bpe &gt; 1.0 &amp;&amp; (declared_reference_fp8 || a_bpe &lt; 2.0) &amp;&amp; ich &gt; 0 &amp;&amp; och &gt; 0 &amp;&amp; q_head == 1) {
+        // Graph rows encode full-tensor scale bytes in effective BPE. Recover
+        // the declared FP32/E8M0 format, then count 2D blocks independently
+        // after TP. A partial output/input tile still owns a complete scale.
+        const double global_blocks = ceil_div(ich, 128) * ceil_div(och, 128);
+        const double encoded_scale_bytes = (a_bpe - 1.0) * ich * och / global_blocks;
+        const double scale_bytes = std::round(encoded_scale_bytes);
+        if ((scale_bytes == 1.0 || scale_bytes == 4.0)
+            &amp;&amp; std::abs(encoded_scale_bytes - scale_bytes) &lt; 1e-6) {
+            const int local_in = tp_split_k ? static_cast&lt;int&gt;(ceil_div(ich, std::max(tp, 1))) : ich;
+            const int local_out = tp_split_k ? och : static_cast&lt;int&gt;(ceil_div(och, std::max(tp, 1)));
+            const double weight_bytes = static_cast&lt;double&gt;(local_in) * local_out
+                + ceil_div(local_in, 128) * ceil_div(local_out, 128) * scale_bytes;
+            const double input_bytes = local_in + ceil_div(local_in, 128) * scale_bytes;</pre></details>
+<p class="references"><a href="https://github.com/deepseek-ai/DeepSeek-V3.2-Exp/blob/main/inference/model.py" rel="noreferrer">参考来源 1</a> <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash/blob/main/inference/kernel.py" rel="noreferrer">参考来源 2</a> </p></article><article class="formula-card" id="hw-mtp-admission" data-category="容量">
+<p class="formula-category">容量</p><h2>多模块 MTP 的共用显存准入</h2>
+<pre class="equation">M_total=W_main+Σ_loaded W_unique,m+KV_main+Σ_active KV_m+M_candidates+M_rollback+M_hidden+max_phase M_scratch; admit ⇔ M_total≤0.9×HBM</pre>
+<p class="variables">loaded：已加载模块集合；active：执行策略选中的模块集合；M_hidden含已提交边界及proposal/history/replay同时保留的跨模块特征；M_scratch为某阶段activation+logits+communication+backend workspace之和。</p><p>MTP启用时loaded_modules默认包含所有声明模块，inactive但loaded仍占独立权重；active必须属于loaded。共享embedding/head按身份去重，权重与FP8二维scale不乘k或接受概率。active模块分别累加cache、候选、回滚及hidden；顺序阶段与模块间scratch取峰值，不能把各阶段互斥缓冲相加。输入FP8量化载荷和scale是显式激活；native batch规划与sweep调用同一breakdown。短prompt保留绝对压缩边界；MTP关闭沿用主模型基线。</p>
+<p class="source-location">代码：<code>llm_perf/core/speculative_memory.py:314</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">93eaec9f2997e9cbb519bd97743fbef57033a034ef73169a6610c1904ba61d52</p><pre>
+def speculative_memory_breakdown(model, gpu_config, batch_size, *, mtp_stage=0,
+        seq_len=None, phase=&quot;decode&quot;, layers=None, workspace_bytes=None,
+        activation_bpe=None, logits_bpe=4.0):
+    &quot;&quot;&quot;Return named persistent and peak temporary byte terms on the busiest GPU.
+
+    ``phase=&#x27;prefill&#x27;`` includes main prompt processing and draft initialization,
+    with main hidden states retained until initialization consumes them. The
+    decode path reserves worst-case full acceptance, independent of acceptance
+    probability. ``mtp_stage=0`` preserves legacy main weights+KV admission;
+    a supplied backend override is explicitly added to that baseline.
+    &quot;&quot;&quot;
+    stage = _number(mtp_stage, &quot;mtp_stage&quot;, integer=True)
+    batch = _number(batch_size, &quot;batch_size&quot;, integer=True)
+    if phase not in {&quot;decode&quot;, &quot;prefill&quot;}:
+        raise ValueError(&quot;phase must be &#x27;decode&#x27; or &#x27;prefill&#x27;&quot;)
+    default_seq = _value(model, &quot;input_seq_length&quot;) + (0 if phase == &quot;prefill&quot; else _value(model, &quot;output_seq_length&quot;))
+    seq = _number(default_seq if seq_len is None else seq_len, &quot;seq_len&quot;, integer=True)
+    raw_mapping = gpu_config or {}
+    mapping = {key: _number(raw_mapping.get(key, raw_mapping.get(&quot;attn_ep&quot;, 1) if key == &quot;attn_cp&quot; else 1),
+                            key, positive=True, integer=True)</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-state-copy" data-category="内存">
+<p class="formula-category">内存</p><h2>推测状态快照和恢复的数据移动</h2>
+<pre class="equation">bytes_copy = bytes_read + bytes_write = 2 × bytes_state; FLOPs_copy=0</pre>
+<p class="variables">bytes_state：当前每请求、每GPU所有权下的可变状态；实际batch由调度入口放大。</p><p>ReferenceMemory显式计费主模型和各active模块的缓存快照/恢复，并进入HBM/L2/NoC路径。模块有独立compressor/sliding状态；主模型恢复所选已验证前缀状态，draft恢复本轮原始状态后按依赖次序重算接受前缀。压缩状态及覆盖的滑动窗口不能只用KV(S+k)−KV(S)估算；候选KV、保留hidden空间与状态拷贝时间分别核算。</p>
+<p class="source-location">代码：<code>llm_perf/core/mtp.py:498</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">d0e2a3dffe79d2db9c4dc47eaad9d01324f0859c737aa208f7e59e3314a3b72a</p><pre>
+def _copy_row(template, name, byte_count):
+    &quot;&quot;&quot;ReferenceMemory width is bytes here (uint8), independent of model precision.&quot;&quot;&quot;
+    row = copy.deepcopy(template)
+    row.update({&quot;NN name&quot;: name, &quot;type&quot;: &quot;ReferenceMemory&quot;, &quot;attention_role&quot;: &quot;state_copy&quot;,
+                &quot;c_in&quot;: int(math.ceil(byte_count)), &quot;c_out&quot;: int(math.ceil(byte_count)),
+                &quot;q_head&quot;: 1, &quot;kv_head&quot;: 1, &quot;h&quot;: 1, &quot;w&quot;: 1, &quot;token&quot;: 1,
+                &quot;a_bpe&quot;: 1, &quot;b_bpe&quot;: 1, &quot;o_bpe&quot;: 1, &quot;weight_en&quot;: 0,
+                &quot;layer&quot;: 1, &quot;gpu_comm&quot;: 0, &quot;expert&quot;: 1, &quot;topk&quot;: 1,
+                &quot;gpu_config_tuning&quot;: &quot;attention_replicated&quot;, &quot;op layout&quot;: &quot;mtp&quot;,
+                &quot;component&quot;: &quot;mtp_state&quot;, &quot;mtp_phase&quot;: &quot;state_management&quot;})
+    return row
+
+
+def mtp_phase_times_s(rows):
+    &quot;&quot;&quot;Auditable per-cycle phase totals; replay layers already carry probability.&quot;&quot;&quot;
+    import pandas as pd
+    if &quot;mtp_phase&quot; not in rows:
+        return {}
+    phases = rows[&quot;mtp_phase&quot;].astype(str)
+    weights = pd.to_numeric(rows.get(&quot;layer&quot;, pd.Series(1., index=rows.index)), errors=&quot;coerce&quot;).fillna(0)</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-dense-tensor-peak" data-category="算力">
+<p class="formula-category">算力</p><h2>稠密 Tensor 峰值与独立精度倍率</h2>
+<pre class="equation">P_dense = 2 * tile_M * tile_N * tile_K * SM_active * f_GHz * scale / 1000</pre>
+<p class="variables">P_dense：每 GPU TFLOP/s；scale：tensor_rate_scale_&lt;precision&gt;；tile_*：整数硬件调度 tile。</p><p>默认 scale=1；显式 tensor_tflops 行按最终可调度 SM 数反推倍率。Rubin FP4=35000 TFLOP/s；通用时钟、BF16/FP8、SIMT/SFU 和内存带宽不随 FP4 倍率改变。tile 不是稀疏加速开关。</p><p class="example">手算示例：{&#x27;tile_peak_tflops&#x27;: 25000, &#x27;scale&#x27;: 1.4} → <strong>35000 TFLOP/s</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:291</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>            tile_ops = math.prod(getattr(self, f&quot;hw_gemm_{axis}_{precision}&quot;) for axis in &quot;mnk&quot;)
+            tile_peak = tile_ops * 2 * self.freq * self.gpu_sm_num / 1000
+            if peak is None:
+                peak, scale = tile_peak, 1.0
+            else:
+                peak = float(peak)
+                if not math.isfinite(peak) or peak &lt;= 0 or tile_peak &lt;= 0:
+                    raise ValueError(f&quot;Invalid dense tensor peak for {name}/{precision}: {peak}&quot;)
+                scale = peak / tile_peak
+            setattr(self, f&quot;tensor_tflops_{precision}&quot;, peak)
+            setattr(self, f&quot;tensor_rate_scale_{precision}&quot;, scale)
+        #[{&#x27;b_gpc&#x27;:4,&#x27;b_sm&#x27;:2,&#x27;a_gpc&#x27;:4,&#x27;a_sm&#x27;:2,&#x27;ich_div&#x27;:1,&#x27;och_div&#x27;:8,&#x27;batch_div&#x27;:2,&#x27;h_div&#x27;:4}]
+        #logging.info(self.gpu_work_map)
+        print(&quot;gpu map length&quot;,len(self.gpu_work_map))
+        logging.info(&quot;gpu map length %d&quot;,len(self.gpu_work_map))
+        logging.info(self.gpu_work_map)
+        self._gen_sys_work_map()
+    
+    def _gen_sys_work_map(self):
+
+        # multi gpu system level tiling configs -------------------------------------</pre></details>
+<p class="references"><a href="https://www.nvidia.com/en-us/data-center/vera-rubin-nvl72/" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="hw-cycles-ns" data-category="算力">
+<p class="formula-category">算力</p><h2>有效 GHz 与纳秒计时</h2>
+<pre class="equation">T_engine_ns = ceil(ops / width_per_cycle / active_SMS / f_GHz)</pre>
+<p class="variables">ops：该引擎操作数；width_per_cycle：SIMT/Tensor/SFU 每 SM 每周期宽度；f_GHz：GHz。</p><p>用于 attention variants；Tensor 宽度还乘该精度的独立倍率。正的亚 GHz 频率必须保留；无效非正频率才回退。并行引擎取最大值，最少计 1 ns。</p><p class="example">手算示例：{&#x27;cycles&#x27;: 450000, &#x27;f_GHz&#x27;: 0.45} → <strong>1000000 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/attention_variants.cpp:21</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">9f19613592d0ddd819948d643c53ceb68fc2bb874bc742889a9a8505235badb7</p><pre>    // GHz can legitimately be below one (for example H20&#x27;s effective 0.45).
+    const double safe_freq = freq &gt; 0.0 ? freq : 1.0;
+    out-&gt;simt_time = std::ceil(std::max(simt_ops, 0.0) / safe_vector_width / parallel_units / safe_freq);
+    out-&gt;tensor_time = std::ceil(std::max(tensor_ops, 0.0) / safe_tensor_width / parallel_units / safe_freq);
+    out-&gt;sfu_time = std::ceil(std::max(sfu_ops, 0.0) / safe_sfu_width / parallel_units / safe_freq);
+    out-&gt;compute_time = std::max(std::max(out-&gt;simt_time, out-&gt;tensor_time), std::max(out-&gt;sfu_time, 1.0));
+    return 0;
+}
+
+int llm_cost_variant_noc_timing_from_text(
+    double simt_ops,
+    double tensor_ops,
+    double sfu_ops,
+    int active_sms,
+    const char* vector_num_precision_value,
+    const char* vector_num_value,
+    const char* sfu_num_precision_value,
+    const char* sfu_num_value,
+    const char* precision_m_value,
+    const char* precision_n_value,
+    const char* precision_k_value,</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-hbm-bandwidth" data-category="内存">
+<p class="formula-category">内存</p><h2>显存接口带宽</h2>
+<pre class="equation">BW_HBM_GBs = sections * pin_speed_Gbps * pins_per_section / 8</pre>
+<p class="variables">sections：建模显存分段数；pin_speed_Gbps：每针 bit/s 的十亿倍；pins_per_section：每段总线位宽。</p><p>得到十进制 GB/s。hbm_section_num 是等效接口组织，不应直接解释为物理 HBM stack 数。运行时从三项相乘派生，表中 hbm_bw 行仅用于对照。</p><p class="example">手算示例：{&#x27;sections&#x27;: 12, &#x27;pin_speed_Gbps&#x27;: 5.2, &#x27;pins_per_section&#x27;: 1024} → <strong>7987.2 GB/s</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:167</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.hbm_pin_num = hbm_pin_num 
+        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s
+        self.hbm_size = hbm_size*1024*1024*1024
+
+        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par
+        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num
+        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die
+        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par
+        if sm is None or (isinstance(sm, float) and math.isnan(sm)):
+            self.gpu_sm_num = self.gpu_topology_sm_num
+        else:
+            self.gpu_sm_num = int(sm)
+
+        self.l2_colesece  = l2_colesece
+        self.die_copy     = die_copy
+        self.gpc_num_par  = gpc_num_par
+        self.is_2die      = self.die_num&gt;1
+        self.l2_size      = self.l2_group_num*self.l2_group_size
+        self.sm_num     = self.gpu_sm_num
+
+        # switch</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-hbm-capacity" data-category="容量">
+<p class="formula-category">容量</p><h2>显存容量的二进制换算</h2>
+<pre class="equation">C_HBM_bytes = hbm_size * 1024^3</pre>
+<p class="variables">hbm_size：硬件表容量数值；运行时按 GiB 解释。</p><p>这是仓库单位约定；产品页 GB 与 GiB 的差异需保留说明。总物理容量不等于模型可用预算；权重、常驻缓存和预留量由模型容量规划另行扣除。</p><p class="example">手算示例：{&#x27;hbm_size&#x27;: 180} → <strong>193273528320 bytes</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:168</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s
+        self.hbm_size = hbm_size*1024*1024*1024
+
+        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par
+        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num
+        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die
+        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par
+        if sm is None or (isinstance(sm, float) and math.isnan(sm)):
+            self.gpu_sm_num = self.gpu_topology_sm_num
+        else:
+            self.gpu_sm_num = int(sm)
+
+        self.l2_colesece  = l2_colesece
+        self.die_copy     = die_copy
+        self.gpc_num_par  = gpc_num_par
+        self.is_2die      = self.die_num&gt;1
+        self.l2_size      = self.l2_group_num*self.l2_group_size
+        self.sm_num     = self.gpu_sm_num
+
+        # switch
+        self.switch_num = 256</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-l2-capacity" data-category="容量">
+<p class="formula-category">容量</p><h2>L2 总容量与分组</h2>
+<pre class="equation">C_L2_bytes = group_KiB * 1024 * groups_per_partition * partitions_per_die * dies</pre>
+<p class="variables">group_KiB：l2_group_size；groups_per_partition：l2_group_num_par；其余取硬件拓扑字段。</p><p>GB200 官方 126 MB 在本模型按 126 MiB 处理：4032 KiB×32组。分组为建模结构，不能把聚合容量再次乘芯片数。官方该句明确指 GB200，未外推 B200 容量。</p><p class="example">手算示例：{&#x27;group_KiB&#x27;: 4032, &#x27;groups&#x27;: 32} → <strong>132120576 bytes</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:183</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.is_2die      = self.die_num&gt;1
+        self.l2_size      = self.l2_group_num*self.l2_group_size
+        self.sm_num     = self.gpu_sm_num
+
+        # switch
+        self.switch_num = 256
+        self.switch_port_bw = 51200
+        self.switch_port_latency = switch_port_latency
+
+        logging.info(&quot;\n -------------------------------------------- Hopper HW paramters --------------------------------------------&quot;)
+        logging.info(&quot;SM BW             %dGB/s&quot;,self.sm_in_bw)
+        logging.info(&quot;GPC BW            %dGB/s&quot;,self.gpc_in_bw)
+        logging.info(&quot;l2 Group BW       %dGB/s&quot;,self.l2_in_bw_group)
+        logging.info(&quot;partiion LINK BW  %dGB/s&quot;,self.link_rbw)
+        logging.info(&quot;D2D bw            %dGB/s&quot;,self.d2d_bw)
+        logging.info(&quot;HBM bw            %dGB/s&quot;,self.hbm_bw)
+        logging.info(&quot;SM size           %dKB&quot;,self.sm_size/1024)
+        logging.info(&quot;RF size           %dKB&quot;,self.rf_size/1024)
+        logging.info(&quot;L2 size           %dMB&quot;,self.l2_size/1024/1024)
+        logging.info(&quot;L2 group num par  %d&quot;,self.l2_par_num)
+        logging.info(&quot;HBM size          %dGB&quot;,self.hbm_size/1024/1024/1024)</pre></details>
+<p class="references"><a href="https://docs.nvidia.com/cuda/blackwell-tuning-guide/index.html#increased-l2-capacity" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="hw-shared-capacity" data-category="容量">
+<p class="formula-category">容量</p><h2>每 SM 共享内存容量</h2>
+<pre class="equation">C_SHM_bytes = shm_size_KiB * 1024</pre>
+<p class="variables">shm_size_KiB：硬件表每 SM 共享内存容量；hw.sm_size：运行时字节数。</p><p>L4 为每 SM 100 KiB，单线程块可用上限 99 KiB；当前容量字段表示整个 SM，没有独立建模每 block 的 1 KiB 保留。L4 的 39 个有效 SM 是计算拟合，不是原厂物理 58 SM。</p><p class="example">手算示例：{&#x27;shm_size_KiB&#x27;: 100} → <strong>102400 bytes</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:129</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        #  COMPUTE UNIT STORAGE
+        self.sm_size      = shm_size*1024
+        self.rf_size      = rf_size*1024
+        self.tmem_size    = tmem_size*1024
+        self.l2_group_size= l2_group_size*1024
+        self.l2_par_num   = l2_par_num           # data will evenly distributed to each l2 group
+
+        #  SM config
+        self.hw_gemm_m_fp16   = gemm_m_fp16
+        self.hw_gemm_n_fp16   = gemm_n_fp16
+        self.hw_gemm_k_fp16   = gemm_k_fp16
+        self.hw_gemm_m_fp8    = gemm_m_fp8
+        self.hw_gemm_n_fp8    = gemm_n_fp8
+        self.hw_gemm_k_fp8    = gemm_k_fp8
+        self.hw_gemm_m_fp4    = gemm_m_fp4
+        self.hw_gemm_n_fp4    = gemm_n_fp4
+        self.hw_gemm_k_fp4    = gemm_k_fp4
+
+        self.gemm          = self.hw_gemm_m_fp16*self.hw_gemm_n_fp16*self.hw_gemm_k_fp16
+        self.acc_precision = acc_precision # f32 or f16
+</pre></details>
+<p class="references"><a href="https://docs.nvidia.com/cuda/ada-tuning-guide/index.html#occupancy" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="hw-cycle-bandwidth" data-category="内存">
+<p class="formula-category">内存</p><h2>每周期宽度转换为带宽</h2>
+<pre class="equation">BW_GBs = width_bytes_per_cycle * f_GHz</pre>
+<p class="variables">width_bytes_per_cycle：shm_bw/tmem_bw/l2_group_bw 等宽度；f_GHz：有效 SM GHz。</p><p>字节/周期×周期/ns=字节/ns=十进制 GB/s。SHM、TMEM、L2 group 和 legacy d2d_bw 使用 SM 时钟；explicit link_rbw 是绝对带宽覆盖值。</p><p class="example">手算示例：{&#x27;width_bytes_per_cycle&#x27;: 128, &#x27;f_GHz&#x27;: 1.53} → <strong>195.84 GB/s</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:120</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        # one L2 group
+        self.l2_in_bw_group  = l2_bw*freq
+        self.l2_out_bw_group = l2_bw*freq
+        self.l2_ram_bw_group = l2_bw*freq # 1RW
+        # link between 2 partiion one direction
+        self.link_rbw     = link_bw*freq if link_rbw is None else link_rbw
+        # link between 2 die one direction
+        self.d2d_bw       = d2d_bw*freq
+
+        #  COMPUTE UNIT STORAGE
+        self.sm_size      = shm_size*1024
+        self.rf_size      = rf_size*1024
+        self.tmem_size    = tmem_size*1024
+        self.l2_group_size= l2_group_size*1024
+        self.l2_par_num   = l2_par_num           # data will evenly distributed to each l2 group
+
+        #  SM config
+        self.hw_gemm_m_fp16   = gemm_m_fp16
+        self.hw_gemm_n_fp16   = gemm_n_fp16
+        self.hw_gemm_k_fp16   = gemm_k_fp16
+        self.hw_gemm_m_fp8    = gemm_m_fp8</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-noc-bandwidth" data-category="互联">
+<p class="formula-category">互联</p><h2>SM/GPC 入口采用 NoC 时钟</h2>
+<pre class="equation">BW_SM_GBs = sm_bw * noc_freq; BW_GPC_GBs = gpc_bw * noc_freq</pre>
+<p class="variables">sm_bw/gpc_bw：字节/周期；noc_freq：NoC GHz；与 sm_freq 独立。</p><p>修改 Tensor 峰值不应修改 NoC 时钟。入口/出口在当前硬件初始化中取相同峰值，实际拥塞由流量模型计算。</p><p class="example">手算示例：{&#x27;sm_bw&#x27;: 128, &#x27;noc_freq&#x27;: 1.8} → <strong>230.4 GB/s</strong></p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:114</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.tmem_out_bw  = tmem_bw*freq
+        self.sm_in_bw     = sm_bw*noc_freq
+        self.sm_out_bw    = sm_bw*noc_freq
+        self.gpc_in_bw    = gpc_bw*noc_freq
+        self.gpc_out_bw   = gpc_bw*noc_freq
+
+        # one L2 group
+        self.l2_in_bw_group  = l2_bw*freq
+        self.l2_out_bw_group = l2_bw*freq
+        self.l2_ram_bw_group = l2_bw*freq # 1RW
+        # link between 2 partiion one direction
+        self.link_rbw     = link_bw*freq if link_rbw is None else link_rbw
+        # link between 2 die one direction
+        self.d2d_bw       = d2d_bw*freq
+
+        #  COMPUTE UNIT STORAGE
+        self.sm_size      = shm_size*1024
+        self.rf_size      = rf_size*1024
+        self.tmem_size    = tmem_size*1024
+        self.l2_group_size= l2_group_size*1024
+        self.l2_par_num   = l2_par_num           # data will evenly distributed to each l2 group</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-tile-padding" data-category="算力">
+<p class="formula-category">算力</p><h2>GEMM tile 尾块与计算时间</h2>
+<pre class="equation">cycles = ceil(M/tile_M) * ceil(N/tile_N) * ceil(K/tile_K); T_ns = ceil(cycles / scale / f_GHz)</pre>
+<p class="variables">M/N/K：本 SM 已分配矩阵维度；tile_*：该精度整数计算 tile；scale：tensor_rate_scale。</p><p>该路径对每一维单独向上取整；尾块填充会降低小矩阵利用率。表达的是调度工作量，不是把填充 FLOPs 当成模型有效 FLOPs；后续 expert 迭代与内存取 max 在 NoC 层执行。</p><p class="example">手算示例：{&#x27;M&#x27;: 33, &#x27;N&#x27;: 5, &#x27;K&#x27;: 129, &#x27;tile_M&#x27;: 32, &#x27;tile_N&#x27;: 4, &#x27;tile_K&#x27;: 128, &#x27;scale&#x27;: 1.4, &#x27;f_GHz&#x27;: 2} → <strong>3 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/kernel_gemm_vector.cpp:87</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">341e05d8a5ecdecb9760f4625ed0501bcce36e47095d03b53d20370ad23a5810</p><pre>    const int k_gemm_iter = static_cast&lt;int&gt;(ceil_div(std::max(sm_k, 0), std::max(compute_tile_k, 1)));
+    const long long sm_gemm_cycle = static_cast&lt;long long&gt;(m_gemm_iter) * n_gemm_iter * k_gemm_iter;
+    const double compute_time = llm_ceil_div_bytes(static_cast&lt;double&gt;(sm_gemm_cycle) / llm_tensor_rate_scale(tensor_rate_scale), freq);
+    if (compute_time &gt;= min_time) {
+        out-&gt;compute_time = compute_time;
+        return 0;
+    }
+
+    const double b_size = static_cast&lt;double&gt;(sm_n) * sm_k * b_bpe / safe_kh / safe_kw;
+    const double a_size = static_cast&lt;double&gt;(sm_k) * sm_m * a_bpe;
+    const double o_size = static_cast&lt;double&gt;(sm_m) * sm_n * o_bpe;
+    const double gpu_b_size = b_size * b_gpc * b_sm;
+    const double gpu_o_size = o_size * gpu_sm_num;
+    if (gpu_b_size + gpu_o_size &gt; l2_size + hbm_size) {
+        out-&gt;skipped_capacity = 1;
+        out-&gt;compute_time = compute_time;
+        out-&gt;a_size = a_size;
+        out-&gt;b_size = b_size;
+        out-&gt;o_size = o_size;
+        return 0;
+    }</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-gemm-capacity-screen" data-category="容量">
+<p class="formula-category">容量</p><h2>GEMM 输入输出容量初筛</h2>
+<pre class="equation">B_bytes = N*K*bpe_B/(kh*kw); O_bytes = M*N*bpe_O; reject if B_bytes*b_gpc*b_sm + O_bytes*SM_active &gt; C_L2 + C_HBM</pre>
+<p class="variables">M/N/K：SM 分片维度；b_gpc/b_sm：输入复制因子；kh/kw 至少为 1。</p><p>这是单算子特征容量初筛，不能替代模型权重与全量 KV 的持久驻留检查。模型权重在共享容量规划中扣除；较小的稀疏读取窗口不代表较小的持久缓存。</p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/kernel_gemm_vector.cpp:99</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">341e05d8a5ecdecb9760f4625ed0501bcce36e47095d03b53d20370ad23a5810</p><pre>    const double gpu_o_size = o_size * gpu_sm_num;
+    if (gpu_b_size + gpu_o_size &gt; l2_size + hbm_size) {
+        out-&gt;skipped_capacity = 1;
+        out-&gt;compute_time = compute_time;
+        out-&gt;a_size = a_size;
+        out-&gt;b_size = b_size;
+        out-&gt;o_size = o_size;
+        return 0;
+    }
+
+    const double feature_buff = tmem_size + sm_size;
+    const double weight_buff = rf_size - 32.0 * 1024.0;
+    int k_stride;
+    int m_stride;
+    int n_stride;
+    if (group == 1) {
+        if (safe_kh * safe_kw * 8 &gt;= stride_tile_k) {
+            k_stride = safe_kh * safe_kw * 8;
+        } else {
+            k_stride = static_cast&lt;int&gt;(
+                std::ceil(64.0 / static_cast&lt;double&gt;(safe_kw * safe_kh * std::max(stride_tile_k, 1)))</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-gemm-buffers" data-category="容量">
+<p class="formula-category">容量</p><h2>GEMM 分块缓冲预算</h2>
+<pre class="equation">feature_buffer = C_TMEM + C_SHM; weight_buffer = C_RF - 32*1024</pre>
+<p class="variables">所有容量为 bytes；32 KiB 是当前调度器固定 RF 保留量。</p><p>这是当前 kernel 的缓冲分配近似，不是 GPU 厂商公布的通用占用公式。L4 没有 TMEM，因此其 feature_buffer 只由 SHM 提供。</p><p class="example">手算示例：{&#x27;C_TMEM&#x27;: 0, &#x27;C_SHM&#x27;: 102400} → <strong>102400 feature-buffer bytes</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/kernel_gemm_vector.cpp:108</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">341e05d8a5ecdecb9760f4625ed0501bcce36e47095d03b53d20370ad23a5810</p><pre>
+    const double feature_buff = tmem_size + sm_size;
+    const double weight_buff = rf_size - 32.0 * 1024.0;
+    int k_stride;
+    int m_stride;
+    int n_stride;
+    if (group == 1) {
+        if (safe_kh * safe_kw * 8 &gt;= stride_tile_k) {
+            k_stride = safe_kh * safe_kw * 8;
+        } else {
+            k_stride = static_cast&lt;int&gt;(
+                std::ceil(64.0 / static_cast&lt;double&gt;(safe_kw * safe_kh * std::max(stride_tile_k, 1)))
+            ) * safe_kw * safe_kh * std::max(stride_tile_k, 1);
+        }
+        m_stride = std::max(stride_tile_m, 1);
+        n_stride = is_decode != 0 ? std::max(stride_tile_n, 1) : 64;
+    } else {
+        k_stride = safe_kh * safe_kw;
+        m_stride = 1;
+        n_stride = 8;
+    }</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-hbm-service" data-category="内存">
+<p class="formula-category">内存</p><h2>L2 未命中流量的 HBM 服务时间</h2>
+<pre class="equation">T_HBM_ns = ceil(read_bytes_group / BW_HBM_group) + ceil(write_bytes_group / BW_HBM_group)</pre>
+<p class="variables">BW_HBM_group=总 HBM GB/s / L2 group 数；read/write bytes 来自各输入与输出的 L2 miss 流量。</p><p>当前 NoC 路径将 HBM 读写时间相加；再与 L2、SM/GPC 和链路时间取最大。驻留/命中率是容量式近似，没有测量级 cache replacement 或带宽效率曲线。</p><p class="example">手算示例：{&#x27;read_bytes_group&#x27;: 1000000, &#x27;write_bytes_group&#x27;: 250000, &#x27;BW_HBM_group&#x27;: 100} → <strong>12500 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/noc.cpp:735</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">edd3fe745d581dc01561545282eea07c75963b7206ad75b25050dab5fb0e56bc</p><pre>    const double hbm_read_time = llm_ceil_div_bytes(hbm_w_footprint, hbm_bw_l2_group);
+    const double hbm_time = hbm_load_time + hbm_read_time;
+    const double hbm_footprint = hbm_r_footprint + hbm_w_footprint;
+
+    const double non_mesh_per_iter_mem_time = std::max(
+        std::max(std::max(hbm_time, l2_ram_time), std::max(l2_in_time, l2_out_time)),
+        std::max(std::max(gpc_in_time, gpc_out_time), std::max(sm_in_time, sm_out_time))
+    );
+    const double lower_bound_time = static_cast&lt;double&gt;(safe_e_iter)
+        * std::max(non_mesh_per_iter_mem_time, compute_time);
+    if (g_llm_cost_hw_noc_prune_non_better != 0 &amp;&amp; lower_bound_time &gt;= min_time) {
+        *out = {};
+        out-&gt;min_time = min_time;
+        out-&gt;hbm_capacity_ok = 1;
+        out-&gt;op_time = lower_bound_time;
+        out-&gt;mem_time = static_cast&lt;double&gt;(safe_e_iter) * non_mesh_per_iter_mem_time;
+        out-&gt;l2_in_time = static_cast&lt;double&gt;(safe_e_iter) * l2_in_time;
+        out-&gt;l2_out_time = static_cast&lt;double&gt;(safe_e_iter) * l2_out_time;
+        out-&gt;l2_ram_time = static_cast&lt;double&gt;(safe_e_iter) * l2_ram_time;
+        out-&gt;gpc_in_time = static_cast&lt;double&gt;(safe_e_iter) * gpc_in_time;
+        out-&gt;gpc_out_time = static_cast&lt;double&gt;(safe_e_iter) * gpc_out_time;</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-mesh-bottleneck" data-category="互联">
+<p class="formula-category">互联</p><h2>分区与跨 die 链路瓶颈</h2>
+<pre class="equation">T_link_ns = ceil(max_edge_bytes / BW_link); T_d2d_ns = ceil(max_d2d_edge_bytes / BW_d2d)</pre>
+<p class="variables">max_edge_bytes：路由后最繁忙有向边的流量；带宽为单向 GB/s。</p><p>当前模型按最忙边决定并行 mesh 的服务时间，并另外记录边流量总和作诊断。不能把所有边流量之和当成每条链路串行发送的字节数。</p><p class="example">手算示例：{&#x27;max_edge_bytes&#x27;: 900000, &#x27;BW_link&#x27;: 900} → <strong>1000 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/noc.cpp:861</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">edd3fe745d581dc01561545282eea07c75963b7206ad75b25050dab5fb0e56bc</p><pre>    }
+    const double link_time = llm_ceil_div_bytes(link_footprint, link_rbw);
+    const double d2d_time = llm_ceil_div_bytes(d2d_footprint, d2d_bw);
+    double partition_direction_footprint = 0.0;
+    for (const auto&amp; entry : direction_loads) {
+        for (double load : entry.loads) {
+            partition_direction_footprint = std::max(partition_direction_footprint, load);
+        }
+    }
+
+    const double per_iter_mem_time = std::max(
+        non_mesh_per_iter_mem_time,
+        std::max(link_time, d2d_time)
+    );
+    const double max_time = static_cast&lt;double&gt;(safe_e_iter) * std::max(per_iter_mem_time, compute_time);
+    const double mem_time = static_cast&lt;double&gt;(safe_e_iter) * per_iter_mem_time;
+    const bool is_better_config = max_time &lt; min_time;
+
+    *out = {};
+    out-&gt;min_time = is_better_config ? max_time : min_time;
+    out-&gt;is_better_config = is_better_config ? 1 : 0;</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-roofline-overlap" data-category="执行模型">
+<p class="formula-category">执行模型</p><h2>计算与存储重叠的 Roofline 近似</h2>
+<pre class="equation">T_iter = max(T_compute, T_HBM, T_L2, T_SM, T_GPC, T_link, T_d2d); T_kernel = expert_iters * T_iter</pre>
+<p class="variables">各存储层时间先由相应流量/带宽计算；T_L2 等代表该层各入口/出口/RAM 支路的最大值。</p><p>这是可重叠服务时间的近似下界，假设计算和多层内存服务充分重叠；并非所有真实 kernel 的测量延迟。HBM 项内部仍为读写时间之和。性能结果须与调度、通信和模型覆盖范围一起解释。</p><p class="example">手算示例：{&#x27;compute_ns&#x27;: 100, &#x27;memory_bottleneck_ns&#x27;: 160, &#x27;expert_iters&#x27;: 3} → <strong>480 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/noc.cpp:874</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">edd3fe745d581dc01561545282eea07c75963b7206ad75b25050dab5fb0e56bc</p><pre>    );
+    const double max_time = static_cast&lt;double&gt;(safe_e_iter) * std::max(per_iter_mem_time, compute_time);
+    const double mem_time = static_cast&lt;double&gt;(safe_e_iter) * per_iter_mem_time;
+    const bool is_better_config = max_time &lt; min_time;
+
+    *out = {};
+    out-&gt;min_time = is_better_config ? max_time : min_time;
+    out-&gt;is_better_config = is_better_config ? 1 : 0;
+    // Compute-bound winners cannot improve further: max_time is already the
+    // scaled compute lower bound. Compare the per-iter terms directly instead
+    // of testing floating-point equality on their ratio.
+    out-&gt;early_break = (is_better_config &amp;&amp; per_iter_mem_time &lt;= compute_time) ? 1 : 0;
+    out-&gt;hbm_capacity_ok = 1;
+    out-&gt;op_time = max_time;
+    out-&gt;mem_time = mem_time;
+    out-&gt;d2d_time = static_cast&lt;double&gt;(safe_e_iter) * d2d_time;
+    out-&gt;link_time = static_cast&lt;double&gt;(safe_e_iter) * link_time;
+    out-&gt;d2d_traffic = d2d_footprint;
+    out-&gt;d2d_total_traffic = d2d_total_footprint;
+    out-&gt;link_traffic = link_footprint;
+    out-&gt;link_total_traffic = link_total_footprint;</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-p2p-time" data-category="通信">
+<p class="formula-category">通信</p><h2>单向端点字节与传输延迟</h2>
+<pre class="equation">T_ns = bytes / BW_one_way_GBs + messages * latency_ns</pre>
+<p class="variables">BW_one_way_GBs：单 GPU 端点单向 GB/s；双向标称 NVLink 带宽需先除 2。</p><p>字节/GB/s 的数值即 ns。B200/GB200/GB300 使用 900 GB/s；H100/H200/H20 使用 450 GB/s。这条公式不能直接输入双向 1800/900 标称总和。</p><p class="example">手算示例：{&#x27;bytes&#x27;: 900000000, &#x27;BW_one_way_GBs&#x27;: 900, &#x27;messages&#x27;: 1, &#x27;latency_ns&#x27;: 6000} → <strong>1006000 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/comm.cpp:25</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71</p><pre>) {
+    return byte_count / llm_comm_bandwidth_bps(bandwidth_gbps) * 1e9
+        + static_cast&lt;double&gt;(messages) * latency_ns;
+}
+
+static inline void llm_pp_boundary_counts(
+    int hw_gpu_num,
+    int hw_gpu_per_node,
+    int pp,
+    int* intra_boundaries,
+    int* inter_boundaries
+) {
+    *intra_boundaries = 0;
+    *inter_boundaries = 0;
+    if (pp &lt;= 1) {
+        return;
+    }
+    const int gpu_num = std::max(hw_gpu_num, 1);
+    const int gpu_per_node = std::max(hw_gpu_per_node, 1);
+    const int gpus_per_stage = std::max(static_cast&lt;int&gt;(ceil_div(gpu_num, std::max(pp, 1))), 1);
+    for (int boundary = 1; boundary &lt; pp; ++boundary) {</pre></details>
+<p class="references"><a href="https://developer.nvidia.com/blog/inside-nvidia-blackwell-ultra-the-chip-powering-the-ai-factory-era/" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="hw-ring-allreduce" data-category="通信">
+<p class="formula-category">通信</p><h2>单域 Ring AllReduce</h2>
+<pre class="equation">T_ns = launch_ns + 2*(ranks-1)*hop_ns + 2*(ranks-1)/ranks * payload_bytes/BW_GBs</pre>
+<p class="variables">payload_bytes：每 rank 数据量；BW_GBs：gpu_scale_bw 单向峰值；hop_ns：switch_port_latency。</p><p>适用于 ranks&gt;1 且一个 scale-up domain 内的显式 ring。Tree 使用 2*ceil(log2(ranks)) 步、2倍 payload；switch reduction 为2步。auto 在允许的算法中取最短，属于理想上界假设。</p><p class="example">手算示例：{&#x27;launch_ns&#x27;: 6000, &#x27;ranks&#x27;: 8, &#x27;hop_ns&#x27;: 600, &#x27;payload_bytes&#x27;: 36000000, &#x27;BW_GBs&#x27;: 900} → <strong>84400 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/comm.cpp:465</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71</p><pre>    /* Ring reduce-scatter followed by ring all-gather. */
+    return {2.0 * (n - 1.0), 2.0 * (n - 1.0) / n};
+}
+
+static double llm_all_reduce_level_time(
+    double payload,
+    double bandwidth,
+    double hop_latency,
+    int ranks,
+    int algo
+) {
+    if (ranks &lt;= 1 || !(bandwidth &gt; 0.0)) {
+        return 0.0;
+    }
+    const LlmAllReduceShape shape = llm_all_reduce_shape(ranks, algo);
+    return shape.steps * hop_latency + shape.bw_factor * payload / bandwidth;
+}
+
+/*
+ * Resolve one level. `auto` mirrors the NCCL tuner and reports the fastest
+ * available algorithm, which keeps the modelled time a lower bound on the</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-hierarchical-allreduce" data-category="通信">
+<p class="formula-category">通信</p><h2>跨域 AllReduce 与带宽下限</h2>
+<pre class="equation">d=min(ranks, GPUs_per_domain); domains=ceil(ranks/d); T=launch+max(T_intra(payload,d)+T_inter(payload/d,domains), 2*(ranks-1)/ranks*payload/BW_scale)</pre>
+<p class="variables">域内使用 scale-up；域间使用 NIC；时间为 ns、带宽为单向 GB/s；单域时 T_inter=0。</p><p>当前为分层 AllReduce 近似：域内归约后域间载荷除以域大小。非整齐域也沿用此分解；未建立每个实际 NIC/交换机排队模型。floor 防止总时间隐含超出理论带宽。</p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/comm.cpp:597</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71</p><pre>
+    return gpu_scale_latency + transfer_time;
+}
+
+double llm_cost_all_reduce_time_from_text(
+    double all_reduce_size,
+    const char* gpu_scale_bw_value,
+    const char* gpu_scale_latency_value,
+    int all_reduce_gpu_num,
+    const char* allreduce_type_value,
+    const char* gpu_per_node_value,
+    const char* nic_bw_value,
+    const char* nic_latency_value,
+    const char* switch_port_latency_value
+) {
+    const char* resolved_allreduce_type =
+        (allreduce_type_value == nullptr || allreduce_type_value[0] == &#x27;\0&#x27;)
+        ? &quot;auto&quot;
+        : allreduce_type_value;
+    const int allreduce_algo =
+        llm_cost_allreduce_algo_id_from_text(resolved_allreduce_type);</pre></details>
+<p class="references"></p></article><article class="formula-card" id="hw-ep-branch-overlap" data-category="通信">
+<p class="formula-category">通信</p><h2>EP 本地与跨节点分支重叠</h2>
+<pre class="equation">T_ns=max(bytes_local/BW_p2p+latency_local, bytes_remote/BW_NIC+latency_remote)+static_latency</pre>
+<p class="variables">仅有非零字节的分支收取对应 latency；端点字节由 EP 放置/self/local/remote 比例拆分。</p><p>当前 EP 流量模型假设本地与远端传输重叠。EP=1 不发生端点通信；FP16 combine 选项可使线缆字节乘2。仅统计端点带宽和固定延迟，没有交换机全局竞争建模。</p><p class="example">手算示例：{&#x27;local_branch_ns&#x27;: 10000, &#x27;remote_branch_ns&#x27;: 16000, &#x27;static_latency&#x27;: 2000} → <strong>18000 ns</strong></p>
+<p class="source-location">代码：<code>llm_perf/native/cost_model_fast/comm.cpp:721</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71</p><pre>        remote_bandwidth_time_ns,
+        std::max(local_branch_time_ns, remote_branch_time_ns) + static_latency,
+    };
+    return 0;
+}
+
+int llm_cost_gpu_comm(
+    int op_type_id,
+    int gpu_comm_mode,
+    double token,
+    double c_in,
+    int n_activated_experts,
+    int n_routed_experts,
+    int is_decode,
+    int use_fp16_combine,
+    double ep_decode_static_latency_ns,
+    double ep_prefill_static_latency_ns,
+    double gpu_m,
+    double gpu_n,
+    double gpu_k,
+    double gpu_e,</pre></details>
+<p class="references"></p></article></section><p id="formula-empty" hidden>没有匹配的公式。</p>
+<footer><p>重新生成：<code>python scripts/build_formula_pages.py</code>；检查源文件是否漂移：<code>python scripts/build_formula_pages.py --check</code></p></footer>
+</main><script src="js/formula-explorer.js" defer></script></body></html>
