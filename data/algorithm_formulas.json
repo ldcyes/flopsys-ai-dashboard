@@ -3,7 +3,7 @@
   "domain": "algorithm",
   "source_kind": "working-tree",
   "base_commit": "767ab143f597c07a1ff700d5cdda645159e41021",
-  "snapshot_sha256": "55e08a3932a280e873a39fef6d7b9ae3babea59049ed7c8847fe00cafa037b48",
+  "snapshot_sha256": "12b3c33865026e03fecc4358f3eb6eb55bb6e81618bc56ed50e28c55fc2352fe",
   "source_fingerprints": {
     "llm_perf/native/cost_model_fast/core_single_op.cpp": "ee4939d2544f8eccd987f7e8007da3f10ffc5190f0e24103bc34bc1c903022c5",
     "llm_perf/core/llm_graph.py": "18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9",
@@ -20,7 +20,7 @@
     "llm_perf/tools/deepseek_v41.py": "58df35f4511b7f4d21b54f0cdae73f004d499e971174af0ac0d908bef944f3a3",
     "llm_perf/tools/deepseek_v41_dspark.py": "81610af909934542b151ee4bbaf33396d91d9b0146de2d7993dca6b3470b1c12",
     "llm_perf/core/deployment_modes.py": "3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159",
-    "scripts/evaluate_deployment_modes.py": "745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1",
+    "scripts/evaluate_deployment_modes.py": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
     "scripts/build_formula_pages.py": "3999b213759524e77110f6ee62d0beb50eff9eb7ff8c4a8bdc2ff7af3eb7572a",
     "scripts/algorithm_formula_catalog.py": "793ad5a69b105f062bc1036b608be4fecedb70aa76baf25cb308d1c14bf0da74",
     "llm_perf/core/model.py": "e14554c35039d45232401e2977003ac114605b67b7d4fdae53b959745b69b23e",
@@ -871,7 +871,7 @@
       "source": {
         "file": "scripts/evaluate_deployment_modes.py",
         "line": 92,
-        "sha256": "745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1",
+        "sha256": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
         "excerpt": "\ndef transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):\n    values = (byte_count, bandwidth_GBps, latency_ns, messages)\n    if any(isinstance(v, bool) or not math.isfinite(v) for v in values):\n        raise ValueError('Transfer inputs must be finite numbers')\n    if byte_count < 0 or bandwidth_GBps <= 0 or latency_ns < 0 or messages < 0:\n        raise ValueError('Invalid transfer size, bandwidth, latency or message count')\n    return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9\n\n\ndef write_dataset(path, document):\n    \"\"\"Serialize before replacing so invalid data cannot damage the old output.\"\"\"\n    body = (json.dumps(document, ensure_ascii=False, sort_keys=True,\n                       separators=(',', ':'), allow_nan=False)+'\\n').encode()\n    path = Path(path)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    temporary = None\n    try:\n        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:\n            temporary = handle.name\n            handle.write(body)"
       }
     },
@@ -887,7 +887,7 @@
       "source": {
         "file": "scripts/evaluate_deployment_modes.py",
         "line": 81,
-        "sha256": "745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1",
+        "sha256": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
         "excerpt": "\ndef af_transfer_work(*, batch, input_len, query_len, hidden, layers, window, streams):\n    \"\"\"Conservative full mHC residual-stream transfer in both directions per layer.\"\"\"\n    values = (batch, input_len, query_len, hidden, layers, window, streams)\n    if any(not isinstance(v, int) or isinstance(v, bool) or v < 1 for v in values):\n        raise ValueError('AF dimensions must be positive integers')\n    tokens = (layers//2)*input_len + (layers-layers//2)*min(input_len, window)\n    width = hidden*streams*2*2  # BF16 residual streams, two boundaries.\n    return dict(prefill_bytes=batch*tokens*width,\n                verify_bytes=batch*layers*query_len*width, messages=2*layers)\n\n\ndef transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):\n    values = (byte_count, bandwidth_GBps, latency_ns, messages)\n    if any(isinstance(v, bool) or not math.isfinite(v) for v in values):\n        raise ValueError('Transfer inputs must be finite numbers')\n    if byte_count < 0 or bandwidth_GBps <= 0 or latency_ns < 0 or messages < 0:\n        raise ValueError('Invalid transfer size, bandwidth, latency or message count')\n    return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9\n\n"
       }
     },
@@ -902,9 +902,9 @@
       "domain": "algorithm",
       "source": {
         "file": "scripts/evaluate_deployment_modes.py",
-        "line": 137,
-        "sha256": "745c0f71d296aac022026ea03355da03503278f94bbc251a940ce21a85fd4af1",
-        "excerpt": "\n    def populate_memory(self, pools, roles):\n        from llm_perf.tools.deepseek_v41 import weight_inventory, cache_memory\n        from llm_perf.tools.deepseek_v41_dspark import dspark_weight_inventory, dspark_cache_memory\n        c = self.text\n        for identity, pool in pools.items():\n            assigned = {r for r, p in roles.items() if p == identity}\n            draft = 'draft' in assigned\n            mapping = parallel_mapping(pool['count'], experts=c['dspark_n_routed_experts'] if draft else c['n_routed_experts'])\n            local_batch = math.ceil(self.batch/mapping['attn_dp'])\n            padded_batch = local_batch*mapping['attn_dp']\n            ffn_batch = math.ceil(padded_batch/mapping['ffn_dp'])\n            if draft:\n                inv = dspark_weight_inventory(self.config, tp=mapping['attn_tp'], ep=mapping['ffn_ep'])\n                cache = dspark_cache_memory(self.config, seq_len=self.input_len+self.output_len)\n                weights = inv['per_gpu_weight_bytes']\n                persistent = local_batch * cache['runtime_bytes']\n                scratch = local_batch * (cache['candidate_kv_workspace_bytes'] + 6*c['vocab_size']*4)\n                scratch += max(local_batch,ffn_batch)*6*c['hidden_size']*c['hc_mult']*2*2\n            else:\n                inv = weight_inventory(self.config, tp=mapping['attn_tp'], ep=mapping['ffn_ep'], engram_shards=pool['count'])"
+        "line": 141,
+        "sha256": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
+        "excerpt": "\n    def populate_memory(self, pools, roles):\n        from llm_perf.tools.deepseek_v41 import weight_inventory, cache_memory\n        from llm_perf.tools.deepseek_v41_dspark import dspark_weight_inventory, dspark_cache_memory\n        c = self.text\n        for identity, pool in pools.items():\n            assigned = {r for r, p in roles.items() if p == identity}\n            draft = 'draft' in assigned\n            mapping = self.mapping(pool, draft=draft)\n            local_batch = math.ceil(self.batch/mapping['attn_dp'])\n            padded_batch = local_batch*mapping['attn_dp']\n            ffn_batch = math.ceil(padded_batch/mapping['ffn_dp'])\n            if draft:\n                inv = dspark_weight_inventory(self.config, tp=mapping['attn_tp'], ep=mapping['ffn_ep'])\n                cache = dspark_cache_memory(self.config, seq_len=self.input_len+self.output_len)\n                weights = inv['per_gpu_weight_bytes']\n                persistent = local_batch * cache['runtime_bytes']\n                scratch = local_batch * (cache['candidate_kv_workspace_bytes'] + 6*c['vocab_size']*4)\n                scratch += max(local_batch,ffn_batch)*6*c['hidden_size']*c['hc_mult']*2*2\n            else:\n                inv = weight_inventory(self.config, tp=mapping['attn_tp'], ep=mapping['ffn_ep'], engram_shards=pool['count'])"
       }
     },
     {

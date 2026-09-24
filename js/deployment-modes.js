@@ -93,6 +93,9 @@ function renderRow(row) {
     const article = node('article', null, 'deployment-row'); article.dataset.rowId = row.id;
     const feasible = row.status === 'feasible';
     article.append(node('h4', `${row.hardware} · Batch ${row.batch} · ${row.gpu_count} GPU + ${row.lpu_count} LPU`));
+    if (row.allocation) article.append(node('p', row.allocation.policy === 'total_gpu'
+        ? `资源口径：总 GPU 预算 ${row.allocation.scale}，按 GPU 池均分；LPU 另计。`
+        : `资源口径：每个独立 GPU 池 ${row.allocation.scale} 张；请比较上方实际总数。`));
     article.append(node('p', feasible ? '可行 / feasible' : `${row.status === 'infeasible' ? '不可行' : '暂不支持'}: ${row.reason}`, `deployment-${row.status}`));
     if (feasible) {
         const m = row.metrics;
@@ -102,8 +105,10 @@ function renderRow(row) {
     if (row.bottleneck) article.append(node('p', `瓶颈 / bottleneck: ${row.bottleneck}`));
     const detail = node('details'); detail.append(node('summary', '资源、阶段与链路明细 / Details'));
     detail.append(node('h5', '资源池（共享 pool ID 表示竞争同一资源）'));
-    detail.append(table(['Pool', '类型', '硬件', '数量', '驻留/设备', '容量/设备'], row.pools.map(p =>
-        [p.id, p.kind, p.hardware, p.count, bytes(p.memory_bytes_per_device), bytes(p.capacity_bytes_per_device)])));
+    detail.append(table(['Pool', '类型', '硬件', '数量', '驻留/设备', '容量/设备', '并行度 / 补齐 batch', 'GPU 机架放置'], row.pools.map(p =>
+        [p.id, p.kind, p.hardware, p.count, bytes(p.memory_bytes_per_device), bytes(p.capacity_bytes_per_device),
+            p.parallelism ? `A TP=${p.parallelism.attn_tp} / DP=${p.parallelism.attn_dp}; F EP=${p.parallelism.ffn_ep} / DP=${p.parallelism.ffn_dp}; padded B=${p.native_padded_batch}` : '—',
+            p.rack_placement?.map(r => `rack ${r.rack}: ${r.gpu_count} GPU`).join('; ') || '—'])));
     detail.append(node('h5', '阶段服务需求（秒/请求，不等于流水线延迟）'));
     detail.append(table(['阶段', 'Pool', 's/request'], row.stages.map(s => [s.id, s.pool_id, format(s.seconds_per_request, 6)])));
     detail.append(node('h5', '链路（十进制 GB/s）'));
@@ -146,6 +151,8 @@ export function mountDeploymentPanel(root) {
             const all = node('option', '全部 / All'); all.value = ''; select.append(all);
             options.forEach(([value, text]) => { const option = node('option', text); option.value = value; select.append(option); });
             if (key === 'workload' && options.length) select.value = options[0][0];
+            const preferred = data.default_selection?.[key];
+            if (preferred != null && options.some(([value]) => value === String(preferred))) select.value = String(preferred);
             select.addEventListener('change', render); wrapper.append(select); controls.append(wrapper);
         }
     }
@@ -153,7 +160,7 @@ export function mountDeploymentPanel(root) {
         if (pending || data) return;
         pending = true; retry.hidden = true; root.setAttribute('aria-busy', 'true'); status.textContent = '正在加载部署比较…';
         try {
-            const response = await fetch('data/deployment_modes.json');
+            const response = await fetch('data/deployment_modes.json', { cache: 'no-cache' });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const next = validateDeploymentData(await response.json());
             data = next; buildControls();
