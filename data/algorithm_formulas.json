@@ -3,7 +3,7 @@
   "domain": "algorithm",
   "source_kind": "working-tree",
   "base_commit": "767ab143f597c07a1ff700d5cdda645159e41021",
-  "snapshot_sha256": "12b3c33865026e03fecc4358f3eb6eb55bb6e81618bc56ed50e28c55fc2352fe",
+  "snapshot_sha256": "a12253b7f788f4ef77d25f55e13c1f1cb5bc10e84cc6d95cc12e2e6c280b4098",
   "source_fingerprints": {
     "llm_perf/native/cost_model_fast/core_single_op.cpp": "ee4939d2544f8eccd987f7e8007da3f10ffc5190f0e24103bc34bc1c903022c5",
     "llm_perf/core/llm_graph.py": "18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9",
@@ -20,9 +20,10 @@
     "llm_perf/tools/deepseek_v41.py": "58df35f4511b7f4d21b54f0cdae73f004d499e971174af0ac0d908bef944f3a3",
     "llm_perf/tools/deepseek_v41_dspark.py": "81610af909934542b151ee4bbaf33396d91d9b0146de2d7993dca6b3470b1c12",
     "llm_perf/core/deployment_modes.py": "3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159",
-    "scripts/evaluate_deployment_modes.py": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
-    "scripts/build_formula_pages.py": "3999b213759524e77110f6ee62d0beb50eff9eb7ff8c4a8bdc2ff7af3eb7572a",
-    "scripts/algorithm_formula_catalog.py": "793ad5a69b105f062bc1036b608be4fecedb70aa76baf25cb308d1c14bf0da74",
+    "scripts/evaluate_deployment_modes.py": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+    "llm_perf/core/memory_tiers.py": "901cc5fec7b18b4ffb546775d5d528d8306dfdd22737e511696668152aba0d3b",
+    "scripts/build_formula_pages.py": "85db1544092a11cc324e09e610409ad4f51428683da887dba90c4471be945ad3",
+    "scripts/algorithm_formula_catalog.py": "bda1f3f695977c84e1c87b4e47d3a3dd709ab318b53c7441357cbc0f3079fba6",
     "llm_perf/core/model.py": "e14554c35039d45232401e2977003ac114605b67b7d4fdae53b959745b69b23e",
     "llm_perf/tools/hf_to_llmperf_xlsx.py": "b6532b9c4aa11ff698ba0be2042ccc5b6427d57742731c8d3b0223aca871de4e",
     "data/deepseek_v41_flash_config.json": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879"
@@ -871,7 +872,7 @@
       "source": {
         "file": "scripts/evaluate_deployment_modes.py",
         "line": 92,
-        "sha256": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
         "excerpt": "\ndef transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):\n    values = (byte_count, bandwidth_GBps, latency_ns, messages)\n    if any(isinstance(v, bool) or not math.isfinite(v) for v in values):\n        raise ValueError('Transfer inputs must be finite numbers')\n    if byte_count < 0 or bandwidth_GBps <= 0 or latency_ns < 0 or messages < 0:\n        raise ValueError('Invalid transfer size, bandwidth, latency or message count')\n    return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9\n\n\ndef write_dataset(path, document):\n    \"\"\"Serialize before replacing so invalid data cannot damage the old output.\"\"\"\n    body = (json.dumps(document, ensure_ascii=False, sort_keys=True,\n                       separators=(',', ':'), allow_nan=False)+'\\n').encode()\n    path = Path(path)\n    path.parent.mkdir(parents=True, exist_ok=True)\n    temporary = None\n    try:\n        with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as handle:\n            temporary = handle.name\n            handle.write(body)"
       }
     },
@@ -887,7 +888,7 @@
       "source": {
         "file": "scripts/evaluate_deployment_modes.py",
         "line": 81,
-        "sha256": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
         "excerpt": "\ndef af_transfer_work(*, batch, input_len, query_len, hidden, layers, window, streams):\n    \"\"\"Conservative full mHC residual-stream transfer in both directions per layer.\"\"\"\n    values = (batch, input_len, query_len, hidden, layers, window, streams)\n    if any(not isinstance(v, int) or isinstance(v, bool) or v < 1 for v in values):\n        raise ValueError('AF dimensions must be positive integers')\n    tokens = (layers//2)*input_len + (layers-layers//2)*min(input_len, window)\n    width = hidden*streams*2*2  # BF16 residual streams, two boundaries.\n    return dict(prefill_bytes=batch*tokens*width,\n                verify_bytes=batch*layers*query_len*width, messages=2*layers)\n\n\ndef transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):\n    values = (byte_count, bandwidth_GBps, latency_ns, messages)\n    if any(isinstance(v, bool) or not math.isfinite(v) for v in values):\n        raise ValueError('Transfer inputs must be finite numbers')\n    if byte_count < 0 or bandwidth_GBps <= 0 or latency_ns < 0 or messages < 0:\n        raise ValueError('Invalid transfer size, bandwidth, latency or message count')\n    return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9\n\n"
       }
     },
@@ -902,8 +903,8 @@
       "domain": "algorithm",
       "source": {
         "file": "scripts/evaluate_deployment_modes.py",
-        "line": 141,
-        "sha256": "50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f",
+        "line": 142,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
         "excerpt": "\n    def populate_memory(self, pools, roles):\n        from llm_perf.tools.deepseek_v41 import weight_inventory, cache_memory\n        from llm_perf.tools.deepseek_v41_dspark import dspark_weight_inventory, dspark_cache_memory\n        c = self.text\n        for identity, pool in pools.items():\n            assigned = {r for r, p in roles.items() if p == identity}\n            draft = 'draft' in assigned\n            mapping = self.mapping(pool, draft=draft)\n            local_batch = math.ceil(self.batch/mapping['attn_dp'])\n            padded_batch = local_batch*mapping['attn_dp']\n            ffn_batch = math.ceil(padded_batch/mapping['ffn_dp'])\n            if draft:\n                inv = dspark_weight_inventory(self.config, tp=mapping['attn_tp'], ep=mapping['ffn_ep'])\n                cache = dspark_cache_memory(self.config, seq_len=self.input_len+self.output_len)\n                weights = inv['per_gpu_weight_bytes']\n                persistent = local_batch * cache['runtime_bytes']\n                scratch = local_batch * (cache['candidate_kv_workspace_bytes'] + 6*c['vocab_size']*4)\n                scratch += max(local_batch,ffn_batch)*6*c['hidden_size']*c['hc_mult']*2*2\n            else:\n                inv = weight_inventory(self.config, tp=mapping['attn_tp'], ep=mapping['ffn_ep'], engram_shards=pool['count'])"
       }
     },
@@ -921,6 +922,38 @@
         "line": 148,
         "sha256": "3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159",
         "excerpt": "        _integer(pool.get('count'), f'pool {pool_id} count')\n        required = _number(pool.get('memory_required_bytes'), f'pool {pool_id} per-device memory requirement')\n        if pool.get('memory_capacity_bytes') is None:\n            raise _ContractError(f'pool {pool_id} has no explicit per-device memory capacity', 'unsupported')\n        capacity = _number(pool['memory_capacity_bytes'], f'pool {pool_id} memory capacity', positive=True)\n        if required > capacity:\n            raise _ContractError(f'pool {pool_id} needs {required:g} bytes/device but capacity is {capacity:g}', 'infeasible')\n    pref_roles = {r for r in roles if r in ('ALL', 'P', 'PA', 'PF')}\n    dec_roles = {r for r in roles if r in ('ALL', 'D', 'DA', 'DF')}\n    if config['mode_id'] == 'all_gpu' and len(used_pools) != 1:\n        raise _ContractError('all_gpu requires one shared pool')\n    if config['mode_id'] in ('pd_gpu', 'pd_draft_gpu', 'pd_draft_lpu'):\n        p_pools, d_pools = {roles[r] for r in pref_roles}, {roles[r] for r in dec_roles}\n        if len(p_pools) != 1 or len(d_pools) != 1 or p_pools & d_pools:\n            raise _ContractError('PD modes require distinct complete P and D pools')\n        if 'draft' in roles and roles['draft'] in p_pools | d_pools:\n            raise _ContractError('PD draft modes require a distinct draft pool')\n    normalized = {}\n    for phase, required_roles in [('prefill', pref_roles), ('verify', dec_roles),\n                                   ('draft', {'draft'} if mode['draft_enabled'] else set()),\n                                   ('draft_init', {'draft'} if mode['draft_enabled'] else set())]:"
+      }
+    },
+    {
+      "id": "algo-deployment-memory-tiers",
+      "title": "LPU SRAM 与外部 DRAM 分层容量",
+      "category": "显式部署",
+      "equation": "R_i=min(M_i, SRAM_remaining); E_i=M_i−R_i; admit ⇔ ΣE_i≤C_external; C_external=256×10^9/8; C_host=128×10^9/8 (excluded)",
+      "source_anchor": "def allocate_tiers",
+      "notes": "按 cache、activation reserve、weights 顺序分配 SRAM，溢出部分进入 fabric DRAM；host DRAM 不计入准入。官方容量为每8颗托盘最高256GB fabric与128GB host；此处显式选择最大配置并平均分摊。保留历史0.5GiB SRAM，lpddr字段是旧命名，不代表已核实LPDDR6。完整prompt激活预留尚未采用分块。",
+      "variables": "容量以bytes/device计算；官方GB按十进制转换，不按GiB放大。",
+      "domain": "algorithm",
+      "source": {
+        "file": "llm_perf/core/memory_tiers.py",
+        "line": 9,
+        "sha256": "901cc5fec7b18b4ffb546775d5d528d8306dfdd22737e511696668152aba0d3b",
+        "excerpt": "\ndef allocate_tiers(components, *, sram_capacity, external_capacity, bandwidth_GBps):\n    \"\"\"Place cache, activation reserve, then weights into SRAM; spill the rest.\"\"\"\n    names = ('persistent', 'activation_reserve', 'weights')\n    if set(components) - set(names):\n        raise ValueError('Unknown memory component')\n    values = [sram_capacity, external_capacity, bandwidth_GBps, *components.values()]\n    if any(isinstance(v, bool) or not math.isfinite(v) or v < 0 for v in values):\n        raise ValueError('Memory capacity, residency and bandwidth must be finite and nonnegative')\n    left = sram_capacity\n    resident, spilled = {}, {}\n    for name in names:\n        size = components.get(name, 0)\n        resident[name] = min(size, left)\n        spilled[name] = size - resident[name]\n        left -= resident[name]\n    return dict(sram_capacity_bytes=sram_capacity, external_capacity_bytes=external_capacity,\n                capacity_bytes=sram_capacity+external_capacity,\n                sram_resident_bytes=sum(resident.values()), external_resident_bytes=sum(spilled.values()),\n                sram_components=resident, external_components=spilled,\n                bandwidth_GBps_per_device=bandwidth_GBps,"
+      }
+    },
+    {
+      "id": "algo-deployment-memory-transfer",
+      "title": "LPU 外部内存的串行搬运开销",
+      "category": "显式部署",
+      "equation": "Bytes_ext=p×E_weights+2p×E_cache+2L×E_activation; BW_device=BW_tray/8; T_ext=Bytes_ext/(BW_device×10^9); T_stage=T_native,SRAM+T_ext",
+      "source_anchor": "def transfer_cost",
+      "notes": "BW_tray=2736.072GB/s沿用仓库未校准假设，并非官方DDR5带宽。prefill的p为原生最多4请求/attention副本的微批次数；draft decode p=5，主verify p=1。权重保守读取所有专家，cache完整读写，activation reserve逐层读写；activation已经覆盖整batch和query窗口，不再乘p。无搬运计算重叠收益，无凭空增加DRAM启动延迟。该解析模型不代表编译器tile调度或实机性能。",
+      "variables": "E为分层分配后的外部驻留bytes/device；L为主模型或draft层数。",
+      "domain": "algorithm",
+      "source": {
+        "file": "llm_perf/core/memory_tiers.py",
+        "line": 33,
+        "sha256": "901cc5fec7b18b4ffb546775d5d528d8306dfdd22737e511696668152aba0d3b",
+        "excerpt": "\ndef transfer_cost(plan, *, layers, weight_passes=1):\n    \"\"\"Read spilled weights/cache each pass; read/write activation spill per layer.\n\nAll experts are streamed conservatively, without assuming an active-expert cache.\nCache traffic counts a full read and write (an upper proxy). Activation reserve\nalready covers the whole batch/query window, so its traffic is not multiplied\nagain by weight passes. No overlap or unverified DRAM transaction latency is used.\n\"\"\"\n    if any(isinstance(v, bool) or not isinstance(v, int) or v < 1 for v in (layers, weight_passes)):\n        raise ValueError('Positive integer layers and passes required')\n    spill = plan['external_components']\n    traffic = dict(weights=spill['weights']*weight_passes,\n                   persistent=2*spill['persistent']*weight_passes,\n                   activation=2*spill['activation_reserve']*layers)\n    total = sum(traffic.values())\n    bw = plan['bandwidth_GBps_per_device']\n    if total and (not math.isfinite(bw) or bw <= 0):\n        raise ValueError('External-memory bandwidth must be positive when data spills')\n    return dict(bytes_per_device=total, byte_components=traffic,\n                bandwidth_GBps_per_device=bw, weight_passes=weight_passes, layers=layers,"
       }
     }
   ]

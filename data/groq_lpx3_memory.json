@@ -1,0 +1,49 @@
+{
+  "hardware": "groq-lpx3",
+  "source": {
+    "url": "https://developer.nvidia.com/blog/inside-nvidia-groq-3-lpx-the-low-latency-inference-accelerator-for-the-nvidia-vera-rubin-platform/",
+    "title": "Inside NVIDIA Groq 3 LPX: The Low-Latency Inference Accelerator for the NVIDIA Vera Rubin Platform",
+    "table": "Table 2. NVIDIA Groq 3 LPX compute tray specifications",
+    "published_date": "2026-03-16",
+    "verified_date": "2026-09-25"
+  },
+  "capacity_scenario": "published_maximum",
+  "chips_per_tray": 8,
+  "units": {
+    "published_GB": "decimal: 1000000000 bytes",
+    "csv_capacity": "GiB per chip: 1073741824 bytes",
+    "runtime_capacity": "bytes per chip",
+    "bandwidth": "decimal GB/s"
+  },
+  "fabric_dram": {
+    "capacity_bytes_per_tray": 256000000000,
+    "capacity_bytes_per_device": 32000000000,
+    "csv_field": "lpddr_size",
+    "csv_gib_per_device": 29.8023223876953125,
+    "included_in_admission": true,
+    "note": "Up-to capacity used as an explicit maximum configuration; equal per-chip sharing is a modeling assumption. Legacy lpddr_* field names denote DRAM via fabric expansion logic, not a verified LPDDR generation."
+  },
+  "host_dram": {
+    "capacity_bytes_per_tray": 128000000000,
+    "capacity_bytes_per_device": 16000000000,
+    "csv_field": "host_memory_size",
+    "csv_gib_per_device": 14.90116119384765625,
+    "included_in_admission": false,
+    "note": "Recorded as an equal per-chip share for reference only. Host DRAM is excluded from accelerator capacity and transfer calculations."
+  },
+  "bandwidth": {
+    "status": "uncalibrated_repository_assumption",
+    "csv_field": "lpddr_bw",
+    "gb_s_per_tray": 2736.072,
+    "gb_s_per_device": 342.009,
+    "sharing": "Equal one-eighth share per device; do not duplicate tray bandwidth for each chip.",
+    "note": "Preserved from the repository's existing LPDDR bandwidth assumption. The cited official table does not establish this bandwidth or LPDDR6; it is not an official or measured external-memory specification."
+  },
+  "sram": {
+    "status": "historical_repository_value",
+    "csv_field": "hbm_size",
+    "gib_per_device": 0.5,
+    "capacity_bytes_per_device": 536870912,
+    "note": "Historical binary-capacity convention retained unchanged. This is not an exact conversion of the official 500 MB/chip specification."
+  }
+}

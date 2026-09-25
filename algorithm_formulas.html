@@ -5,11 +5,11 @@
 <a href="index.html" class="nav-link">Overview</a><a href="leaderboard.html" class="nav-link">Hardware Ranking</a><a href="tco.html" class="nav-link">TCO</a><a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a><a href="author.html" class="nav-link">Author</a>
 </div></div></nav><main class="container formula-page"><header><p class="eyebrow">Source-backed equation reference</p><h1>LLM 算法 Formula</h1>
 <p>基于本地修复后的 <strong>working-tree</strong> 生成；不是未修改的 main，也不是已通过实测校准的性能承诺。</p>
-<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">12b3c33865026e03fecc4358f3eb6eb55bb6e81618bc56ed50e28c55fc2352fe</code></p>
+<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">a12253b7f788f4ef77d25f55e13c1f1cb5bc10e84cc6d95cc12e2e6c280b4098</code></p>
 <p><a href="deployment_modes.html">V4.1 部署比较</a> · <a href="hardware_formulas.html">切换硬件 / LLM 算法公式</a> · <a href="data/algorithm_formulas.json">下载 JSON 与源码指纹</a></p>
 <p class="formula-limits">范围：数学形状、tile执行成本、混合精度驻留、通信与调度分别列明。DSA/V4参考算子、完整MTP与V4.1 / DSpark独立部署公式已展开；有限输出、共享pool和链路需求单列。GPU与LPUs资源分别计数，模式预算可能不同。融合调度、接受率、后端工作区和队列仍是执行假设，不等于已完成性能校准。</p></header>
 <section class="formula-controls" aria-label="公式筛选"><label for="formula-search">搜索公式、变量或代码<input type="search" id="formula-search" placeholder="top-k / KV / MTP / bandwidth"></label>
-<label for="formula-category">类别<select id="formula-category"><option value="">全部</option><option>AFD / PD</option><option>Attention</option><option>MTP</option><option>MoE</option><option>V4.1 / DSpark</option><option>基础算子</option><option>显存</option><option>显式部署</option><option>稀疏与压缩</option><option>验证</option></select></label><p id="formula-count" aria-live="polite">49 条公式</p></section>
+<label for="formula-category">类别<select id="formula-category"><option value="">全部</option><option>AFD / PD</option><option>Attention</option><option>MTP</option><option>MoE</option><option>V4.1 / DSpark</option><option>基础算子</option><option>显存</option><option>显式部署</option><option>稀疏与压缩</option><option>验证</option></select></label><p id="formula-count" aria-live="polite">51 条公式</p></section>
 <section id="formula-list"><article class="formula-card" id="algo-gemm" data-category="基础算子">
 <p class="formula-category">基础算子</p><h2>独立矩阵 GEMM 工作量</h2>
 <pre class="equation">MAC = E × H × M × N × K; FLOPs = 2 × MAC; weights = E × H × M × K × b_w</pre>
@@ -989,7 +989,6 @@ def cache_memory(config, *, seq_len, policy=&#x27;packed&#x27;):
     return dict(global_bytes=global_bytes, window_bytes=window_bytes,
         compressor_state_bytes=compressor_bytes, runtime_bytes=global_bytes+window_bytes+compressor_bytes,
         engram_table_bytes=engram_bytes, global_bytes_per_token=sum((main+index)/x[&#x27;compress_ratio&#x27;] for x in owners))
-
 </pre></details>
 <p class="references"><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/blob/dba1be0a40aa45a94ad051997016db3960a90277/inference/model.py" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="algo-v41-ced" data-category="V4.1 / DSpark">
 <p class="formula-category">V4.1 / DSpark</p><h2>V4.1 CED 的 prefill 与 decoder 有界回放</h2>
@@ -1178,7 +1177,7 @@ def evaluate_mode(config, timings):
 <pre class="equation">T_transfer=bytes/(BW_GBps×10^9)+messages×latency_ns/10^9; D_link=T_prefill+1_(O&gt;1)T_decode_init+Σ_k N_k T_verify(k)+Σ_(k≥1)N_k T_draft+1_(K&gt;0)T_draft_init</pre>
 <p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>链路速率和延迟必须显式给出且有限，BW&gt;0。PD传输实际选定的共享global KV、compressor state、local窗口和需要的bounded replay状态；保留/传输或重建窗口策略须在allocation假设中说明。AF逐层双向传输；draft传main hidden、提案ID/概率、接受prefix反馈，调用侧按阶段各计一次。相同物理链路上的这些需求必须合并，不能当独立带宽资源。</p>
 <p class="source-location">代码：<code>scripts/evaluate_deployment_modes.py:92</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f</p><pre>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb</p><pre>
 def transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):
     values = (byte_count, bandwidth_GBps, latency_ns, messages)
     if any(isinstance(v, bool) or not math.isfinite(v) for v in values):
@@ -1204,7 +1203,7 @@ def write_dataset(path, document):
 <pre class="equation">Q_P= floor(L/2)I + (L−floor(L/2))min(I,W); bytes_AF,P=BQ_P×D×m×2×2; bytes_AF,verify=B×L×(k+1)×D×m×2×2; messages_AF=2L</pre>
 <p class="variables">B=batch; S=context; Q=query tokens; L=layers; D=hidden; b=bytes/element</p><p>packed CED的encoder全prompt、decoder有界窗口分别累计。一个2来自BF16 bytes，一个2来自每层A→F和F→A；m=hc_mult，不能只传D忽略残差stream宽度。这里为保守完整mHC stream传输；边界是每层而不是整stack一次。跨硬件stage单独跑各自native timing，不能把GPU延迟重标为LPU。</p>
 <p class="source-location">代码：<code>scripts/evaluate_deployment_modes.py:81</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f</p><pre>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb</p><pre>
 def af_transfer_work(*, batch, input_len, query_len, hidden, layers, window, streams):
     &quot;&quot;&quot;Conservative full mHC residual-stream transfer in both directions per layer.&quot;&quot;&quot;
     values = (batch, input_len, query_len, hidden, layers, window, streams)
@@ -1223,14 +1222,13 @@ def transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):
     if byte_count &lt; 0 or bandwidth_GBps &lt;= 0 or latency_ns &lt; 0 or messages &lt; 0:
         raise ValueError(&#x27;Invalid transfer size, bandwidth, latency or message count&#x27;)
     return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9
-
 </pre></details>
 <p class="references"></p></article><article class="formula-card" id="algo-deployment-memory-reserve" data-category="显式部署">
 <p class="formula-category">显式部署</p><h2>整数 DP 负载与逐设备 activation reserve</h2>
 <pre class="equation">B_A=ceil(B/DP_A); B_pad=B_A×DP_A; B_F=ceil(B_pad/DP_F); B_live=max(1_A B_A,1_F B_F); Q_reserve=max(I if prefill role else 6,6); M_live,main=4B_live Q_reserve Dm+1_A×24B_A V; M_live,draft=B_A(M_candidate+24V)+24max(B_A,B_F)Dm; M_required=W_device+M_persistent+M_live</pre>
 <p class="variables">1_A/1_F=pool是否持有attention/FFN角色；D=hidden；m=hc_mult；V=vocab_size；DP_A/DP_F=对应角色replica数。</p><p>B是实际整个pool请求batch；B_A为每attention replica整数负载，B_F由补齐后的B_pad换算到FFN replica。A/F同pool取较大活跃batch，FFN独占pool用B_F，不能错误套用B_A。主模型attention cache按B_A倍、上下文I+O+6计入，FFN-only不持有KV；draft cache上下文I+O，candidate scratch单列。激活系数4为BF16双缓冲，24V为六位置FP32 logits。这里是显式保守reserve，不是完整allocator/kernel workspace测量，也不等价于旧MTP准入的0.9×HBM规则。</p>
-<p class="source-location">代码：<code>scripts/evaluate_deployment_modes.py:141</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">50f2c52b5389faa4e385fbc8465353e51e81eacfe3b214274f0cc934e601db6f</p><pre>
+<p class="source-location">代码：<code>scripts/evaluate_deployment_modes.py:142</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb</p><pre>
     def populate_memory(self, pools, roles):
         from llm_perf.tools.deepseek_v41 import weight_inventory, cache_memory
         from llm_perf.tools.deepseek_v41_dspark import dspark_weight_inventory, dspark_cache_memory
@@ -1277,6 +1275,58 @@ def transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):
     for phase, required_roles in [(&#x27;prefill&#x27;, pref_roles), (&#x27;verify&#x27;, dec_roles),
                                    (&#x27;draft&#x27;, {&#x27;draft&#x27;} if mode[&#x27;draft_enabled&#x27;] else set()),
                                    (&#x27;draft_init&#x27;, {&#x27;draft&#x27;} if mode[&#x27;draft_enabled&#x27;] else set())]:</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-memory-tiers" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>LPU SRAM 与外部 DRAM 分层容量</h2>
+<pre class="equation">R_i=min(M_i, SRAM_remaining); E_i=M_i−R_i; admit ⇔ ΣE_i≤C_external; C_external=256×10^9/8; C_host=128×10^9/8 (excluded)</pre>
+<p class="variables">容量以bytes/device计算；官方GB按十进制转换，不按GiB放大。</p><p>按 cache、activation reserve、weights 顺序分配 SRAM，溢出部分进入 fabric DRAM；host DRAM 不计入准入。官方容量为每8颗托盘最高256GB fabric与128GB host；此处显式选择最大配置并平均分摊。保留历史0.5GiB SRAM，lpddr字段是旧命名，不代表已核实LPDDR6。完整prompt激活预留尚未采用分块。</p>
+<p class="source-location">代码：<code>llm_perf/core/memory_tiers.py:9</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">901cc5fec7b18b4ffb546775d5d528d8306dfdd22737e511696668152aba0d3b</p><pre>
+def allocate_tiers(components, *, sram_capacity, external_capacity, bandwidth_GBps):
+    &quot;&quot;&quot;Place cache, activation reserve, then weights into SRAM; spill the rest.&quot;&quot;&quot;
+    names = (&#x27;persistent&#x27;, &#x27;activation_reserve&#x27;, &#x27;weights&#x27;)
+    if set(components) - set(names):
+        raise ValueError(&#x27;Unknown memory component&#x27;)
+    values = [sram_capacity, external_capacity, bandwidth_GBps, *components.values()]
+    if any(isinstance(v, bool) or not math.isfinite(v) or v &lt; 0 for v in values):
+        raise ValueError(&#x27;Memory capacity, residency and bandwidth must be finite and nonnegative&#x27;)
+    left = sram_capacity
+    resident, spilled = {}, {}
+    for name in names:
+        size = components.get(name, 0)
+        resident[name] = min(size, left)
+        spilled[name] = size - resident[name]
+        left -= resident[name]
+    return dict(sram_capacity_bytes=sram_capacity, external_capacity_bytes=external_capacity,
+                capacity_bytes=sram_capacity+external_capacity,
+                sram_resident_bytes=sum(resident.values()), external_resident_bytes=sum(spilled.values()),
+                sram_components=resident, external_components=spilled,
+                bandwidth_GBps_per_device=bandwidth_GBps,</pre></details>
+<p class="references"></p></article><article class="formula-card" id="algo-deployment-memory-transfer" data-category="显式部署">
+<p class="formula-category">显式部署</p><h2>LPU 外部内存的串行搬运开销</h2>
+<pre class="equation">Bytes_ext=p×E_weights+2p×E_cache+2L×E_activation; BW_device=BW_tray/8; T_ext=Bytes_ext/(BW_device×10^9); T_stage=T_native,SRAM+T_ext</pre>
+<p class="variables">E为分层分配后的外部驻留bytes/device；L为主模型或draft层数。</p><p>BW_tray=2736.072GB/s沿用仓库未校准假设，并非官方DDR5带宽。prefill的p为原生最多4请求/attention副本的微批次数；draft decode p=5，主verify p=1。权重保守读取所有专家，cache完整读写，activation reserve逐层读写；activation已经覆盖整batch和query窗口，不再乘p。无搬运计算重叠收益，无凭空增加DRAM启动延迟。该解析模型不代表编译器tile调度或实机性能。</p>
+<p class="source-location">代码：<code>llm_perf/core/memory_tiers.py:33</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">901cc5fec7b18b4ffb546775d5d528d8306dfdd22737e511696668152aba0d3b</p><pre>
+def transfer_cost(plan, *, layers, weight_passes=1):
+    &quot;&quot;&quot;Read spilled weights/cache each pass; read/write activation spill per layer.
+
+All experts are streamed conservatively, without assuming an active-expert cache.
+Cache traffic counts a full read and write (an upper proxy). Activation reserve
+already covers the whole batch/query window, so its traffic is not multiplied
+again by weight passes. No overlap or unverified DRAM transaction latency is used.
+&quot;&quot;&quot;
+    if any(isinstance(v, bool) or not isinstance(v, int) or v &lt; 1 for v in (layers, weight_passes)):
+        raise ValueError(&#x27;Positive integer layers and passes required&#x27;)
+    spill = plan[&#x27;external_components&#x27;]
+    traffic = dict(weights=spill[&#x27;weights&#x27;]*weight_passes,
+                   persistent=2*spill[&#x27;persistent&#x27;]*weight_passes,
+                   activation=2*spill[&#x27;activation_reserve&#x27;]*layers)
+    total = sum(traffic.values())
+    bw = plan[&#x27;bandwidth_GBps_per_device&#x27;]
+    if total and (not math.isfinite(bw) or bw &lt;= 0):
+        raise ValueError(&#x27;External-memory bandwidth must be positive when data spills&#x27;)
+    return dict(bytes_per_device=total, byte_components=traffic,
+                bandwidth_GBps_per_device=bw, weight_passes=weight_passes, layers=layers,</pre></details>
 <p class="references"></p></article></section><p id="formula-empty" hidden>没有匹配的公式。</p>
 <footer><p>重新生成：<code>python scripts/build_formula_pages.py</code>；检查源文件是否漂移：<code>python scripts/build_formula_pages.py --check</code></p></footer>
 </main><script src="js/formula-explorer.js" defer></script></body></html>

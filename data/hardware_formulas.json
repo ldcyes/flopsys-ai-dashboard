@@ -3,23 +3,42 @@
   "domain": "hardware",
   "source_kind": "working-tree",
   "base_commit": "767ab143f597c07a1ff700d5cdda645159e41021",
-  "snapshot_sha256": "4db9756ae6417d7b10dc7a30ad84a0a9ea44dcb0906de2c7aea93f1a66e5b285",
+  "snapshot_sha256": "9629bdf8651783ba00dfe15aa8106f450b72d9c6cd923daaf1dbae081f025767",
   "source_fingerprints": {
+    "llm_perf/core/hardware_gpu.py": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
     "llm_perf/native/cost_model_fast/comm.cpp": "a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71",
     "llm_perf/native/cost_model_fast/attention_variants.cpp": "9f19613592d0ddd819948d643c53ceb68fc2bb874bc742889a9a8505235badb7",
     "llm_perf/native/cost_model_fast/core_process_single.cpp": "71eb71f82bff51460ba1104e623a6132827c6162812022e3eb96ff29cc1a202d",
     "llm_perf/core/speculative_memory.py": "93eaec9f2997e9cbb519bd97743fbef57033a034ef73169a6610c1904ba61d52",
     "llm_perf/core/mtp.py": "d0e2a3dffe79d2db9c4dc47eaad9d01324f0859c737aa208f7e59e3314a3b72a",
-    "llm_perf/core/hardware_gpu.py": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
     "llm_perf/native/cost_model_fast/kernel_gemm_vector.cpp": "341e05d8a5ecdecb9760f4625ed0501bcce36e47095d03b53d20370ad23a5810",
     "llm_perf/native/cost_model_fast/noc.cpp": "edd3fe745d581dc01561545282eea07c75963b7206ad75b25050dab5fb0e56bc",
-    "scripts/build_formula_pages.py": "3999b213759524e77110f6ee62d0beb50eff9eb7ff8c4a8bdc2ff7af3eb7572a",
-    "scripts/hardware_formula_catalog.py": "04e532244695d99f571891707434c336bf325cb8cfd37ce2e6dce6a8949d6b6e",
-    "data/gpu_info.csv": "194d130a71263087cce5f020901687ca57db61412d4ee6575d6aac20913f7617",
-    "data/gpu_info.xlsx": "8da352bca648abe141d262cf24c9fef01b9fd67366d99c81c43b89152925b62a"
+    "scripts/build_formula_pages.py": "85db1544092a11cc324e09e610409ad4f51428683da887dba90c4471be945ad3",
+    "scripts/hardware_formula_catalog.py": "599ae478a3a02ebbe7527faf646709a761cf76533ce692463fba1dc95f0e3119",
+    "data/gpu_info.csv": "e6893aa8f99d379f85093e037c1a06d0e6f44acb9ef40e6ae6a784633d514c2e",
+    "data/gpu_info.xlsx": "7b7956a4e2c7f57e4dc1d6dc28fe2b3679bd06566977c20f6c841f9dc7bb2fa9"
   },
   "status": "audited equations; analytical estimates, not benchmark calibration",
   "formulas": [
+    {
+      "id": "hw-lpx-external-memory",
+      "title": "LPX 外部 DRAM 容量与托盘带宽分摊",
+      "category": "容量",
+      "equation": "C_fabric,chip=256×10^9/8 bytes; C_host,chip=128×10^9/8 bytes (excluded); BW_chip=BW_tray/8",
+      "variables": "CSV lpddr_size/host_memory_size为GiB/颗，runtime转bytes；lpddr_bw为十进制GB/s/托盘，runtime lpddr_bw_per_device为GB/s/颗。",
+      "notes": "官方每8颗托盘最多256GB fabric DRAM和128GB host DRAM，此处选最大配置并平均分摊；host不计入部署准入。旧lpddr名称不等同已核实LPDDR6。2736.072GB/s托盘带宽是仓库未校准假设；0.5GiB SRAM保留历史口径。外部访问开销由部署层单独加入，不能按150TB/s SRAM速度计算。",
+      "source_anchor": "self.lpddr_size = lpddr_size",
+      "references": [
+        "https://developer.nvidia.com/blog/inside-nvidia-groq-3-lpx-the-low-latency-inference-accelerator-for-the-nvidia-vera-rubin-platform/"
+      ],
+      "domain": "hardware",
+      "source": {
+        "file": "llm_perf/core/hardware_gpu.py",
+        "line": 177,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
+        "excerpt": "        # DRAM is recorded separately and is not accelerator admission capacity.\n        self.lpddr_size = lpddr_size * 1024**3\n        self.host_memory_size = host_memory_size * 1024**3\n        self.lpddr_bw = lpddr_bw  # decimal GB/s per tray (repository assumption)\n        self.lpx_chips_per_tray = lpx_chips_per_tray\n        self.lpddr_bw_per_device = (\n            lpddr_bw / lpx_chips_per_tray if lpx_chips_per_tray > 0 else 0.0\n        )\n\n        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par\n        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num\n        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die\n        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par\n        if sm is None or (isinstance(sm, float) and math.isnan(sm)):\n            self.gpu_sm_num = self.gpu_topology_sm_num\n        else:\n            self.gpu_sm_num = int(sm)\n\n        self.l2_colesece  = l2_colesece\n        self.die_copy     = die_copy\n        self.gpc_num_par  = gpc_num_par"
+      }
+    },
     {
       "id": "hw-vocab-allgather",
       "title": "词表分片输出 AllGather",
@@ -180,8 +199,8 @@
       "domain": "hardware",
       "source": {
         "file": "llm_perf/core/hardware_gpu.py",
-        "line": 291,
-        "sha256": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
+        "line": 306,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
         "excerpt": "            tile_ops = math.prod(getattr(self, f\"hw_gemm_{axis}_{precision}\") for axis in \"mnk\")\n            tile_peak = tile_ops * 2 * self.freq * self.gpu_sm_num / 1000\n            if peak is None:\n                peak, scale = tile_peak, 1.0\n            else:\n                peak = float(peak)\n                if not math.isfinite(peak) or peak <= 0 or tile_peak <= 0:\n                    raise ValueError(f\"Invalid dense tensor peak for {name}/{precision}: {peak}\")\n                scale = peak / tile_peak\n            setattr(self, f\"tensor_tflops_{precision}\", peak)\n            setattr(self, f\"tensor_rate_scale_{precision}\", scale)\n        #[{'b_gpc':4,'b_sm':2,'a_gpc':4,'a_sm':2,'ich_div':1,'och_div':8,'batch_div':2,'h_div':4}]\n        #logging.info(self.gpu_work_map)\n        print(\"gpu map length\",len(self.gpu_work_map))\n        logging.info(\"gpu map length %d\",len(self.gpu_work_map))\n        logging.info(self.gpu_work_map)\n        self._gen_sys_work_map()\n    \n    def _gen_sys_work_map(self):\n\n        # multi gpu system level tiling configs -------------------------------------"
       }
     },
@@ -231,9 +250,9 @@
       "domain": "hardware",
       "source": {
         "file": "llm_perf/core/hardware_gpu.py",
-        "line": 167,
-        "sha256": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
-        "excerpt": "        self.hbm_pin_num = hbm_pin_num \n        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s\n        self.hbm_size = hbm_size*1024*1024*1024\n\n        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par\n        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num\n        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die\n        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par\n        if sm is None or (isinstance(sm, float) and math.isnan(sm)):\n            self.gpu_sm_num = self.gpu_topology_sm_num\n        else:\n            self.gpu_sm_num = int(sm)\n\n        self.l2_colesece  = l2_colesece\n        self.die_copy     = die_copy\n        self.gpc_num_par  = gpc_num_par\n        self.is_2die      = self.die_num>1\n        self.l2_size      = self.l2_group_num*self.l2_group_size\n        self.sm_num     = self.gpu_sm_num\n\n        # switch"
+        "line": 171,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
+        "excerpt": "        self.hbm_pin_num = hbm_pin_num \n        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s\n        self.hbm_size = hbm_size*1024*1024*1024\n\n        # Legacy lpddr_* names describe the external fabric DRAM tier, not SRAM.\n        # CSV capacities are GiB/chip; runtime capacities are bytes/chip. Host\n        # DRAM is recorded separately and is not accelerator admission capacity.\n        self.lpddr_size = lpddr_size * 1024**3\n        self.host_memory_size = host_memory_size * 1024**3\n        self.lpddr_bw = lpddr_bw  # decimal GB/s per tray (repository assumption)\n        self.lpx_chips_per_tray = lpx_chips_per_tray\n        self.lpddr_bw_per_device = (\n            lpddr_bw / lpx_chips_per_tray if lpx_chips_per_tray > 0 else 0.0\n        )\n\n        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par\n        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num\n        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die\n        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par\n        if sm is None or (isinstance(sm, float) and math.isnan(sm)):\n            self.gpu_sm_num = self.gpu_topology_sm_num"
       }
     },
     {
@@ -255,9 +274,9 @@
       "domain": "hardware",
       "source": {
         "file": "llm_perf/core/hardware_gpu.py",
-        "line": 168,
-        "sha256": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
-        "excerpt": "        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s\n        self.hbm_size = hbm_size*1024*1024*1024\n\n        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par\n        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num\n        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die\n        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par\n        if sm is None or (isinstance(sm, float) and math.isnan(sm)):\n            self.gpu_sm_num = self.gpu_topology_sm_num\n        else:\n            self.gpu_sm_num = int(sm)\n\n        self.l2_colesece  = l2_colesece\n        self.die_copy     = die_copy\n        self.gpc_num_par  = gpc_num_par\n        self.is_2die      = self.die_num>1\n        self.l2_size      = self.l2_group_num*self.l2_group_size\n        self.sm_num     = self.gpu_sm_num\n\n        # switch\n        self.switch_num = 256"
+        "line": 172,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
+        "excerpt": "        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s\n        self.hbm_size = hbm_size*1024*1024*1024\n\n        # Legacy lpddr_* names describe the external fabric DRAM tier, not SRAM.\n        # CSV capacities are GiB/chip; runtime capacities are bytes/chip. Host\n        # DRAM is recorded separately and is not accelerator admission capacity.\n        self.lpddr_size = lpddr_size * 1024**3\n        self.host_memory_size = host_memory_size * 1024**3\n        self.lpddr_bw = lpddr_bw  # decimal GB/s per tray (repository assumption)\n        self.lpx_chips_per_tray = lpx_chips_per_tray\n        self.lpddr_bw_per_device = (\n            lpddr_bw / lpx_chips_per_tray if lpx_chips_per_tray > 0 else 0.0\n        )\n\n        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par\n        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num\n        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die\n        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par\n        if sm is None or (isinstance(sm, float) and math.isnan(sm)):\n            self.gpu_sm_num = self.gpu_topology_sm_num\n        else:"
       }
     },
     {
@@ -282,8 +301,8 @@
       "domain": "hardware",
       "source": {
         "file": "llm_perf/core/hardware_gpu.py",
-        "line": 183,
-        "sha256": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
+        "line": 198,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
         "excerpt": "        self.is_2die      = self.die_num>1\n        self.l2_size      = self.l2_group_num*self.l2_group_size\n        self.sm_num     = self.gpu_sm_num\n\n        # switch\n        self.switch_num = 256\n        self.switch_port_bw = 51200\n        self.switch_port_latency = switch_port_latency\n\n        logging.info(\"\\n -------------------------------------------- Hopper HW paramters --------------------------------------------\")\n        logging.info(\"SM BW             %dGB/s\",self.sm_in_bw)\n        logging.info(\"GPC BW            %dGB/s\",self.gpc_in_bw)\n        logging.info(\"l2 Group BW       %dGB/s\",self.l2_in_bw_group)\n        logging.info(\"partiion LINK BW  %dGB/s\",self.link_rbw)\n        logging.info(\"D2D bw            %dGB/s\",self.d2d_bw)\n        logging.info(\"HBM bw            %dGB/s\",self.hbm_bw)\n        logging.info(\"SM size           %dKB\",self.sm_size/1024)\n        logging.info(\"RF size           %dKB\",self.rf_size/1024)\n        logging.info(\"L2 size           %dMB\",self.l2_size/1024/1024)\n        logging.info(\"L2 group num par  %d\",self.l2_par_num)\n        logging.info(\"HBM size          %dGB\",self.hbm_size/1024/1024/1024)"
       }
     },
@@ -308,8 +327,8 @@
       "domain": "hardware",
       "source": {
         "file": "llm_perf/core/hardware_gpu.py",
-        "line": 129,
-        "sha256": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
+        "line": 133,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
         "excerpt": "        #  COMPUTE UNIT STORAGE\n        self.sm_size      = shm_size*1024\n        self.rf_size      = rf_size*1024\n        self.tmem_size    = tmem_size*1024\n        self.l2_group_size= l2_group_size*1024\n        self.l2_par_num   = l2_par_num           # data will evenly distributed to each l2 group\n\n        #  SM config\n        self.hw_gemm_m_fp16   = gemm_m_fp16\n        self.hw_gemm_n_fp16   = gemm_n_fp16\n        self.hw_gemm_k_fp16   = gemm_k_fp16\n        self.hw_gemm_m_fp8    = gemm_m_fp8\n        self.hw_gemm_n_fp8    = gemm_n_fp8\n        self.hw_gemm_k_fp8    = gemm_k_fp8\n        self.hw_gemm_m_fp4    = gemm_m_fp4\n        self.hw_gemm_n_fp4    = gemm_n_fp4\n        self.hw_gemm_k_fp4    = gemm_k_fp4\n\n        self.gemm          = self.hw_gemm_m_fp16*self.hw_gemm_n_fp16*self.hw_gemm_k_fp16\n        self.acc_precision = acc_precision # f32 or f16\n"
       }
     },
@@ -333,8 +352,8 @@
       "domain": "hardware",
       "source": {
         "file": "llm_perf/core/hardware_gpu.py",
-        "line": 120,
-        "sha256": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
+        "line": 124,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
         "excerpt": "        # one L2 group\n        self.l2_in_bw_group  = l2_bw*freq\n        self.l2_out_bw_group = l2_bw*freq\n        self.l2_ram_bw_group = l2_bw*freq # 1RW\n        # link between 2 partiion one direction\n        self.link_rbw     = link_bw*freq if link_rbw is None else link_rbw\n        # link between 2 die one direction\n        self.d2d_bw       = d2d_bw*freq\n\n        #  COMPUTE UNIT STORAGE\n        self.sm_size      = shm_size*1024\n        self.rf_size      = rf_size*1024\n        self.tmem_size    = tmem_size*1024\n        self.l2_group_size= l2_group_size*1024\n        self.l2_par_num   = l2_par_num           # data will evenly distributed to each l2 group\n\n        #  SM config\n        self.hw_gemm_m_fp16   = gemm_m_fp16\n        self.hw_gemm_n_fp16   = gemm_n_fp16\n        self.hw_gemm_k_fp16   = gemm_k_fp16\n        self.hw_gemm_m_fp8    = gemm_m_fp8"
       }
     },
@@ -358,8 +377,8 @@
       "domain": "hardware",
       "source": {
         "file": "llm_perf/core/hardware_gpu.py",
-        "line": 114,
-        "sha256": "fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926",
+        "line": 118,
+        "sha256": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
         "excerpt": "        self.tmem_out_bw  = tmem_bw*freq\n        self.sm_in_bw     = sm_bw*noc_freq\n        self.sm_out_bw    = sm_bw*noc_freq\n        self.gpc_in_bw    = gpc_bw*noc_freq\n        self.gpc_out_bw   = gpc_bw*noc_freq\n\n        # one L2 group\n        self.l2_in_bw_group  = l2_bw*freq\n        self.l2_out_bw_group = l2_bw*freq\n        self.l2_ram_bw_group = l2_bw*freq # 1RW\n        # link between 2 partiion one direction\n        self.link_rbw     = link_bw*freq if link_rbw is None else link_rbw\n        # link between 2 die one direction\n        self.d2d_bw       = d2d_bw*freq\n\n        #  COMPUTE UNIT STORAGE\n        self.sm_size      = shm_size*1024\n        self.rf_size      = rf_size*1024\n        self.tmem_size    = tmem_size*1024\n        self.l2_group_size= l2_group_size*1024\n        self.l2_par_num   = l2_par_num           # data will evenly distributed to each l2 group"
       }
     },

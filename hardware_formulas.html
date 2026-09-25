@@ -5,12 +5,38 @@
 <a href="index.html" class="nav-link">Overview</a><a href="leaderboard.html" class="nav-link">Hardware Ranking</a><a href="tco.html" class="nav-link">TCO</a><a href="expert_fc_utilization.html" class="nav-link">Expert FC Utilization</a><a href="author.html" class="nav-link">Author</a>
 </div></div></nav><main class="container formula-page"><header><p class="eyebrow">Source-backed equation reference</p><h1>硬件计算 Formula</h1>
 <p>基于本地修复后的 <strong>working-tree</strong> 生成；不是未修改的 main，也不是已通过实测校准的性能承诺。</p>
-<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">4db9756ae6417d7b10dc7a30ad84a0a9ea44dcb0906de2c7aea93f1a66e5b285</code></p>
+<p>基础 commit：<code>767ab143f597c07a1ff700d5cdda645159e41021</code><br>公式快照：<code class="fingerprint">9629bdf8651783ba00dfe15aa8106f450b72d9c6cd923daaf1dbae081f025767</code></p>
 <p><a href="deployment_modes.html">V4.1 部署比较</a> · <a href="algorithm_formulas.html">切换硬件 / LLM 算法公式</a> · <a href="data/hardware_formulas.json">下载 JSON 与源码指纹</a></p>
 <p class="formula-limits">范围：数学形状、tile执行成本、混合精度驻留、通信与调度分别列明。DSA/V4参考算子、完整MTP与V4.1 / DSpark独立部署公式已展开；有限输出、共享pool和链路需求单列。GPU与LPUs资源分别计数，模式预算可能不同。融合调度、接受率、后端工作区和队列仍是执行假设，不等于已完成性能校准。</p></header>
 <section class="formula-controls" aria-label="公式筛选"><label for="formula-search">搜索公式、变量或代码<input type="search" id="formula-search" placeholder="top-k / KV / MTP / bandwidth"></label>
-<label for="formula-category">类别<select id="formula-category"><option value="">全部</option><option>互联</option><option>内存</option><option>容量</option><option>执行模型</option><option>算力</option><option>通信</option></select></label><p id="formula-count" aria-live="polite">24 条公式</p></section>
-<section id="formula-list"><article class="formula-card" id="hw-vocab-allgather" data-category="通信">
+<label for="formula-category">类别<select id="formula-category"><option value="">全部</option><option>互联</option><option>内存</option><option>容量</option><option>执行模型</option><option>算力</option><option>通信</option></select></label><p id="formula-count" aria-live="polite">25 条公式</p></section>
+<section id="formula-list"><article class="formula-card" id="hw-lpx-external-memory" data-category="容量">
+<p class="formula-category">容量</p><h2>LPX 外部 DRAM 容量与托盘带宽分摊</h2>
+<pre class="equation">C_fabric,chip=256×10^9/8 bytes; C_host,chip=128×10^9/8 bytes (excluded); BW_chip=BW_tray/8</pre>
+<p class="variables">CSV lpddr_size/host_memory_size为GiB/颗，runtime转bytes；lpddr_bw为十进制GB/s/托盘，runtime lpddr_bw_per_device为GB/s/颗。</p><p>官方每8颗托盘最多256GB fabric DRAM和128GB host DRAM，此处选最大配置并平均分摊；host不计入部署准入。旧lpddr名称不等同已核实LPDDR6。2736.072GB/s托盘带宽是仓库未校准假设；0.5GiB SRAM保留历史口径。外部访问开销由部署层单独加入，不能按150TB/s SRAM速度计算。</p>
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:177</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>        # DRAM is recorded separately and is not accelerator admission capacity.
+        self.lpddr_size = lpddr_size * 1024**3
+        self.host_memory_size = host_memory_size * 1024**3
+        self.lpddr_bw = lpddr_bw  # decimal GB/s per tray (repository assumption)
+        self.lpx_chips_per_tray = lpx_chips_per_tray
+        self.lpddr_bw_per_device = (
+            lpddr_bw / lpx_chips_per_tray if lpx_chips_per_tray &gt; 0 else 0.0
+        )
+
+        self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par
+        self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num
+        self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die
+        self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par
+        if sm is None or (isinstance(sm, float) and math.isnan(sm)):
+            self.gpu_sm_num = self.gpu_topology_sm_num
+        else:
+            self.gpu_sm_num = int(sm)
+
+        self.l2_colesece  = l2_colesece
+        self.die_copy     = die_copy
+        self.gpc_num_par  = gpc_num_par</pre></details>
+<p class="references"><a href="https://developer.nvidia.com/blog/inside-nvidia-groq-3-lpx-the-low-latency-inference-accelerator-for-the-nvidia-vera-rubin-platform/" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="hw-vocab-allgather" data-category="通信">
 <p class="formula-category">通信</p><h2>词表分片输出 AllGather</h2>
 <pre class="equation">S_local=B_local×Q×ceil(V/TP)×b_logits; T_ring=(TP−1)×[S_local/BW+latency]</pre>
 <p class="variables">S_local为每rank逻辑logits分片字节；时间单位需将GB/s转换为bytes/ns；TP=1时为0。</p><p>主模型和draft的输出head均聚合词表分片，不用AllReduce替代。使用输出logits精度和逻辑形状，不用GEMM填充tile或输入精度。多节点ring采用NIC瓶颈的保守解析策略；真实collective算法需后端实测。</p>
@@ -170,8 +196,8 @@ def mtp_phase_times_s(rows):
 <p class="formula-category">算力</p><h2>稠密 Tensor 峰值与独立精度倍率</h2>
 <pre class="equation">P_dense = 2 * tile_M * tile_N * tile_K * SM_active * f_GHz * scale / 1000</pre>
 <p class="variables">P_dense：每 GPU TFLOP/s；scale：tensor_rate_scale_&lt;precision&gt;；tile_*：整数硬件调度 tile。</p><p>默认 scale=1；显式 tensor_tflops 行按最终可调度 SM 数反推倍率。Rubin FP4=35000 TFLOP/s；通用时钟、BF16/FP8、SIMT/SFU 和内存带宽不随 FP4 倍率改变。tile 不是稀疏加速开关。</p><p class="example">手算示例：{&#x27;tile_peak_tflops&#x27;: 25000, &#x27;scale&#x27;: 1.4} → <strong>35000 TFLOP/s</strong></p>
-<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:291</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>            tile_ops = math.prod(getattr(self, f&quot;hw_gemm_{axis}_{precision}&quot;) for axis in &quot;mnk&quot;)
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:306</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>            tile_ops = math.prod(getattr(self, f&quot;hw_gemm_{axis}_{precision}&quot;) for axis in &quot;mnk&quot;)
             tile_peak = tile_ops * 2 * self.freq * self.gpu_sm_num / 1000
             if peak is None:
                 peak, scale = tile_peak, 1.0
@@ -188,7 +214,7 @@ def mtp_phase_times_s(rows):
         logging.info(&quot;gpu map length %d&quot;,len(self.gpu_work_map))
         logging.info(self.gpu_work_map)
         self._gen_sys_work_map()
-    
+
     def _gen_sys_work_map(self):
 
         # multi gpu system level tiling configs -------------------------------------</pre></details>
@@ -222,35 +248,46 @@ int llm_cost_variant_noc_timing_from_text(
 <p class="formula-category">内存</p><h2>显存接口带宽</h2>
 <pre class="equation">BW_HBM_GBs = sections * pin_speed_Gbps * pins_per_section / 8</pre>
 <p class="variables">sections：建模显存分段数；pin_speed_Gbps：每针 bit/s 的十亿倍；pins_per_section：每段总线位宽。</p><p>得到十进制 GB/s。hbm_section_num 是等效接口组织，不应直接解释为物理 HBM stack 数。运行时从三项相乘派生，表中 hbm_bw 行仅用于对照。</p><p class="example">手算示例：{&#x27;sections&#x27;: 12, &#x27;pin_speed_Gbps&#x27;: 5.2, &#x27;pins_per_section&#x27;: 1024} → <strong>7987.2 GB/s</strong></p>
-<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:167</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.hbm_pin_num = hbm_pin_num 
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:171</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>        self.hbm_pin_num = hbm_pin_num
         self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s
         self.hbm_size = hbm_size*1024*1024*1024
+
+        # Legacy lpddr_* names describe the external fabric DRAM tier, not SRAM.
+        # CSV capacities are GiB/chip; runtime capacities are bytes/chip. Host
+        # DRAM is recorded separately and is not accelerator admission capacity.
+        self.lpddr_size = lpddr_size * 1024**3
+        self.host_memory_size = host_memory_size * 1024**3
+        self.lpddr_bw = lpddr_bw  # decimal GB/s per tray (repository assumption)
+        self.lpx_chips_per_tray = lpx_chips_per_tray
+        self.lpddr_bw_per_device = (
+            lpddr_bw / lpx_chips_per_tray if lpx_chips_per_tray &gt; 0 else 0.0
+        )
 
         self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par
         self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num
         self.gpc_num         = self.die_num*self.gpc_num_par*self.par_num_die
         self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par
         if sm is None or (isinstance(sm, float) and math.isnan(sm)):
-            self.gpu_sm_num = self.gpu_topology_sm_num
-        else:
-            self.gpu_sm_num = int(sm)
-
-        self.l2_colesece  = l2_colesece
-        self.die_copy     = die_copy
-        self.gpc_num_par  = gpc_num_par
-        self.is_2die      = self.die_num&gt;1
-        self.l2_size      = self.l2_group_num*self.l2_group_size
-        self.sm_num     = self.gpu_sm_num
-
-        # switch</pre></details>
+            self.gpu_sm_num = self.gpu_topology_sm_num</pre></details>
 <p class="references"></p></article><article class="formula-card" id="hw-hbm-capacity" data-category="容量">
 <p class="formula-category">容量</p><h2>显存容量的二进制换算</h2>
 <pre class="equation">C_HBM_bytes = hbm_size * 1024^3</pre>
 <p class="variables">hbm_size：硬件表容量数值；运行时按 GiB 解释。</p><p>这是仓库单位约定；产品页 GB 与 GiB 的差异需保留说明。总物理容量不等于模型可用预算；权重、常驻缓存和预留量由模型容量规划另行扣除。</p><p class="example">手算示例：{&#x27;hbm_size&#x27;: 180} → <strong>193273528320 bytes</strong></p>
-<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:168</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:172</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>        self.hbm_bw = self.hbm_section_num*self.hbm_pin_speed*self.hbm_pin_num/8 # GB/s
         self.hbm_size = hbm_size*1024*1024*1024
+
+        # Legacy lpddr_* names describe the external fabric DRAM tier, not SRAM.
+        # CSV capacities are GiB/chip; runtime capacities are bytes/chip. Host
+        # DRAM is recorded separately and is not accelerator admission capacity.
+        self.lpddr_size = lpddr_size * 1024**3
+        self.host_memory_size = host_memory_size * 1024**3
+        self.lpddr_bw = lpddr_bw  # decimal GB/s per tray (repository assumption)
+        self.lpx_chips_per_tray = lpx_chips_per_tray
+        self.lpddr_bw_per_device = (
+            lpddr_bw / lpx_chips_per_tray if lpx_chips_per_tray &gt; 0 else 0.0
+        )
 
         self.l2_group_num    = self.die_num*self.par_num_die*self.l2_group_num_par
         self.hbm_bw_l2_group = self.hbm_bw/self.l2_group_num
@@ -258,24 +295,13 @@ int llm_cost_variant_noc_timing_from_text(
         self.gpu_topology_sm_num = self.die_num*self.gpc_sm_num*self.par_num_die*self.gpc_num_par
         if sm is None or (isinstance(sm, float) and math.isnan(sm)):
             self.gpu_sm_num = self.gpu_topology_sm_num
-        else:
-            self.gpu_sm_num = int(sm)
-
-        self.l2_colesece  = l2_colesece
-        self.die_copy     = die_copy
-        self.gpc_num_par  = gpc_num_par
-        self.is_2die      = self.die_num&gt;1
-        self.l2_size      = self.l2_group_num*self.l2_group_size
-        self.sm_num     = self.gpu_sm_num
-
-        # switch
-        self.switch_num = 256</pre></details>
+        else:</pre></details>
 <p class="references"></p></article><article class="formula-card" id="hw-l2-capacity" data-category="容量">
 <p class="formula-category">容量</p><h2>L2 总容量与分组</h2>
 <pre class="equation">C_L2_bytes = group_KiB * 1024 * groups_per_partition * partitions_per_die * dies</pre>
 <p class="variables">group_KiB：l2_group_size；groups_per_partition：l2_group_num_par；其余取硬件拓扑字段。</p><p>GB200 官方 126 MB 在本模型按 126 MiB 处理：4032 KiB×32组。分组为建模结构，不能把聚合容量再次乘芯片数。官方该句明确指 GB200，未外推 B200 容量。</p><p class="example">手算示例：{&#x27;group_KiB&#x27;: 4032, &#x27;groups&#x27;: 32} → <strong>132120576 bytes</strong></p>
-<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:183</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.is_2die      = self.die_num&gt;1
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:198</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>        self.is_2die      = self.die_num&gt;1
         self.l2_size      = self.l2_group_num*self.l2_group_size
         self.sm_num     = self.gpu_sm_num
 
@@ -300,8 +326,8 @@ int llm_cost_variant_noc_timing_from_text(
 <p class="formula-category">容量</p><h2>每 SM 共享内存容量</h2>
 <pre class="equation">C_SHM_bytes = shm_size_KiB * 1024</pre>
 <p class="variables">shm_size_KiB：硬件表每 SM 共享内存容量；hw.sm_size：运行时字节数。</p><p>L4 为每 SM 100 KiB，单线程块可用上限 99 KiB；当前容量字段表示整个 SM，没有独立建模每 block 的 1 KiB 保留。L4 的 39 个有效 SM 是计算拟合，不是原厂物理 58 SM。</p><p class="example">手算示例：{&#x27;shm_size_KiB&#x27;: 100} → <strong>102400 bytes</strong></p>
-<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:129</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        #  COMPUTE UNIT STORAGE
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:133</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>        #  COMPUTE UNIT STORAGE
         self.sm_size      = shm_size*1024
         self.rf_size      = rf_size*1024
         self.tmem_size    = tmem_size*1024
@@ -320,14 +346,13 @@ int llm_cost_variant_noc_timing_from_text(
         self.hw_gemm_k_fp4    = gemm_k_fp4
 
         self.gemm          = self.hw_gemm_m_fp16*self.hw_gemm_n_fp16*self.hw_gemm_k_fp16
-        self.acc_precision = acc_precision # f32 or f16
-</pre></details>
+        self.acc_precision = acc_precision # f32 or f16</pre></details>
 <p class="references"><a href="https://docs.nvidia.com/cuda/ada-tuning-guide/index.html#occupancy" rel="noreferrer">参考来源 1</a> </p></article><article class="formula-card" id="hw-cycle-bandwidth" data-category="内存">
 <p class="formula-category">内存</p><h2>每周期宽度转换为带宽</h2>
 <pre class="equation">BW_GBs = width_bytes_per_cycle * f_GHz</pre>
 <p class="variables">width_bytes_per_cycle：shm_bw/tmem_bw/l2_group_bw 等宽度；f_GHz：有效 SM GHz。</p><p>字节/周期×周期/ns=字节/ns=十进制 GB/s。SHM、TMEM、L2 group 和 legacy d2d_bw 使用 SM 时钟；explicit link_rbw 是绝对带宽覆盖值。</p><p class="example">手算示例：{&#x27;width_bytes_per_cycle&#x27;: 128, &#x27;f_GHz&#x27;: 1.53} → <strong>195.84 GB/s</strong></p>
-<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:120</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        # one L2 group
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:124</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>        # one L2 group
         self.l2_in_bw_group  = l2_bw*freq
         self.l2_out_bw_group = l2_bw*freq
         self.l2_ram_bw_group = l2_bw*freq # 1RW
@@ -352,8 +377,8 @@ int llm_cost_variant_noc_timing_from_text(
 <p class="formula-category">互联</p><h2>SM/GPC 入口采用 NoC 时钟</h2>
 <pre class="equation">BW_SM_GBs = sm_bw * noc_freq; BW_GPC_GBs = gpc_bw * noc_freq</pre>
 <p class="variables">sm_bw/gpc_bw：字节/周期；noc_freq：NoC GHz；与 sm_freq 独立。</p><p>修改 Tensor 峰值不应修改 NoC 时钟。入口/出口在当前硬件初始化中取相同峰值，实际拥塞由流量模型计算。</p><p class="example">手算示例：{&#x27;sm_bw&#x27;: 128, &#x27;noc_freq&#x27;: 1.8} → <strong>230.4 GB/s</strong></p>
-<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:114</code></p>
-<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">fc4711e55e627b9822915d765e3d4da71d00b8a94e8953758a668e71aa5d2926</p><pre>        self.tmem_out_bw  = tmem_bw*freq
+<p class="source-location">代码：<code>llm_perf/core/hardware_gpu.py:118</code></p>
+<details><summary>展开当前源码片段与 SHA-256</summary><p class="fingerprint">8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c</p><pre>        self.tmem_out_bw  = tmem_bw*freq
         self.sm_in_bw     = sm_bw*noc_freq
         self.sm_out_bw    = sm_bw*noc_freq
         self.gpc_in_bw    = gpc_bw*noc_freq

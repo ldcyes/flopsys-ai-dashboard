@@ -15,9 +15,10 @@
     <p>每个配置列出实际 GPU 与 LPU 数量。不同资源预算不能直接视为公平竞赛；未按成本排序或选出通用赢家。批量表示整个资源池的并发请求数。</p>
     <p>模式 5 按 PA(GPU)、PF(LPU)、DA(GPU)、DF(LPU) 解读。条件接受率、末端上下文近似及硬件假设见下方来源与假设。</p>
     <p>Rubin NV72 / NV144 提供“总 GPU 均分”和“每 GPU 池”两种资源口径。NV144 按两组 NV72 计算；采用仓库硬件参数快照，带宽与最新官方规格有差异。</p>
+    <p>Rubin 新结果已计入 LPU 外部内存：每颗 32 GB fabric DRAM 的最大配置场景，主机内存单列排除；外部带宽沿用未校准假设，搬运时间串行计入。旧 B200 结果保留原 SRAM-only 口径。<a href="data/groq_lpx3_memory.json">查看容量来源与带宽假设</a>。</p>
     <p><a href="data/rubin_nv72_nv144.csv" download>下载 Rubin 六模式 CSV</a> · <a href="data/deployment_modes.json" download>下载比较 JSON</a></p>
     <div data-deployment-root></div>
 </main>
-<script type="module" src="js/deployment-modes.js?v=rubin-20260925"></script>
+<script type="module" src="js/deployment-modes.js?v=lpx-memory-20260925"></script>
 </body>
 </html>

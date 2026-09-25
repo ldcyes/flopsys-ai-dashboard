@@ -58,6 +58,17 @@ export function validateDeploymentData(data) {
             for (const key of ['memory_bytes_per_device', 'capacity_bytes_per_device']) {
                 if (pool[key] != null) number(pool[key], key);
             }
+            if (pool.memory_tiers) for (const key of ['sram_resident_bytes', 'sram_capacity_bytes',
+                'external_resident_bytes', 'external_capacity_bytes', 'bandwidth_GBps_per_device', 'host_capacity_bytes_excluded']) {
+                number(pool.memory_tiers[key], key);
+            }
+        }
+        if (row.memory_transfers) {
+            list(row.memory_transfers, 'memory_transfers');
+            for (const transfer of row.memory_transfers) {
+                invariant(pools.has(transfer.pool_id), 'Unknown memory transfer pool');
+                for (const key of ['seconds', 'bytes_per_device', 'native_seconds', 'total_seconds']) number(transfer[key], key);
+            }
         }
         unique(row.stages, 'stages'); unique(row.links, 'links');
         for (const stage of row.stages) {
@@ -109,6 +120,23 @@ function renderRow(row) {
         [p.id, p.kind, p.hardware, p.count, bytes(p.memory_bytes_per_device), bytes(p.capacity_bytes_per_device),
             p.parallelism ? `A TP=${p.parallelism.attn_tp} / DP=${p.parallelism.attn_dp}; F EP=${p.parallelism.ffn_ep} / DP=${p.parallelism.ffn_dp}; padded B=${p.native_padded_batch}` : '—',
             p.rack_placement?.map(r => `rack ${r.rack}: ${r.gpu_count} GPU`).join('; ') || '—'])));
+    const tierPools = row.pools.filter(p => p.memory_tiers);
+    if (tierPools.length) {
+        detail.append(node('h5', 'LPU 分层内存（每颗；主机内存不计入容量）'));
+        detail.append(table(['Pool', 'SRAM 驻留 / 容量', '外部 DRAM 驻留 / 容量', '外部 GB/s/颗（假设）', '主机内存不计入'], tierPools.map(p => {
+            const m = p.memory_tiers;
+            return [p.id, `${bytes(m.sram_resident_bytes)} / ${bytes(m.sram_capacity_bytes)}`,
+                `${bytes(m.external_resident_bytes)} / ${bytes(m.external_capacity_bytes)}`,
+                format(m.bandwidth_GBps_per_device, 3), bytes(m.host_capacity_bytes_excluded)];
+        })));
+    }
+    if (row.memory_transfers?.length) {
+        detail.append(node('h5', '外部内存搬运（整池一次阶段调用；已计入阶段时间，勿重复相加）'));
+        detail.append(node('p', '逐 query width 列出候选曲线；最终执行量由草稿前缀 k 与周期数决定。'));
+        detail.append(table(['Pool', '阶段 / 角色 / q', '搬运/颗', '搬运 s', '原生 s', '合计 s'], row.memory_transfers.map(t =>
+            [t.pool_id, `${t.phase} / ${t.role} / ${t.query_width}`, bytes(t.bytes_per_device),
+                format(t.seconds, 6), format(t.native_seconds, 6), format(t.total_seconds, 6)])));
+    }
     detail.append(node('h5', '阶段服务需求（秒/请求，不等于流水线延迟）'));
     detail.append(table(['阶段', 'Pool', 's/request'], row.stages.map(s => [s.id, s.pool_id, format(s.seconds_per_request, 6)])));
     detail.append(node('h5', '链路（十进制 GB/s）'));
