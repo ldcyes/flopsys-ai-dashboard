@@ -16,4 +16,15 @@
 .formula-card summary { cursor: pointer; padding: .5rem 0; }
 .formula-limits { border-left: 3px solid #aa761b; padding-left: 1rem; }
 .formula-card[hidden] { display: none; }
+.formula-card { scroll-margin-top: 5rem; }
+.formula-card p, .communication-nav p { color: #33455f; }
+.formula-card .variables, .formula-card .source-location, .formula-card .fingerprint { color: #51657f; }
+.formula-card li { margin: .7rem 0; line-height: 1.7; overflow-wrap: anywhere; }
+.formula-table-wrap { overflow-x: auto; max-width: 100%; margin: 1rem 0; }
+.formula-table-wrap table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.formula-table-wrap caption { text-align: left; font-weight: 600; padding: .5rem 0; }
+.formula-table-wrap th, .formula-table-wrap td { text-align: left; padding: .65rem; border-bottom: 1px solid #d9e2ed; vertical-align: top; min-width: 7rem; color: #24374b; }
+.formula-table-wrap th { background: #edf3fa; }
+.communication-nav { padding: 1rem; border: 1px solid #cbd7e6; border-radius: .8rem; background: #fff; color: #17283d; }
+.communication-nav a { display: inline-block; margin: .35rem .8rem .35rem 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .formula-card { padding: 1rem; } .formula-page { padding-left: 1rem; padding-right: 1rem; } }

@@ -3,7 +3,7 @@
   "domain": "hardware",
   "source_kind": "working-tree",
   "base_commit": "767ab143f597c07a1ff700d5cdda645159e41021",
-  "snapshot_sha256": "9629bdf8651783ba00dfe15aa8106f450b72d9c6cd923daaf1dbae081f025767",
+  "snapshot_sha256": "d619e12fb06c0aa7fc57fe3b2bdd3cb474b9f39bd2726f04f3ebaa79792b9373",
   "source_fingerprints": {
     "llm_perf/core/hardware_gpu.py": "8f5c7a317d694c1c5eb2b862f557f4743a89d92aa27511fde5416e71c6b5921c",
     "llm_perf/native/cost_model_fast/comm.cpp": "a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71",
@@ -13,7 +13,7 @@
     "llm_perf/core/mtp.py": "d0e2a3dffe79d2db9c4dc47eaad9d01324f0859c737aa208f7e59e3314a3b72a",
     "llm_perf/native/cost_model_fast/kernel_gemm_vector.cpp": "341e05d8a5ecdecb9760f4625ed0501bcce36e47095d03b53d20370ad23a5810",
     "llm_perf/native/cost_model_fast/noc.cpp": "edd3fe745d581dc01561545282eea07c75963b7206ad75b25050dab5fb0e56bc",
-    "scripts/build_formula_pages.py": "85db1544092a11cc324e09e610409ad4f51428683da887dba90c4471be945ad3",
+    "scripts/build_formula_pages.py": "feb4c0160f10aa436cb6c43bf673761a83f659be23b0b50e827015f4ad7e591a",
     "scripts/hardware_formula_catalog.py": "599ae478a3a02ebbe7527faf646709a761cf76533ce692463fba1dc95f0e3119",
     "data/gpu_info.csv": "e6893aa8f99d379f85093e037c1a06d0e6f44acb9ef40e6ae6a784633d514c2e",
     "data/gpu_info.xlsx": "7b7956a4e2c7f57e4dc1d6dc28fe2b3679bd06566977c20f6c841f9dc7bb2fa9"

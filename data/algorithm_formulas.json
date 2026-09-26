@@ -3,7 +3,7 @@
   "domain": "algorithm",
   "source_kind": "working-tree",
   "base_commit": "767ab143f597c07a1ff700d5cdda645159e41021",
-  "snapshot_sha256": "a12253b7f788f4ef77d25f55e13c1f1cb5bc10e84cc6d95cc12e2e6c280b4098",
+  "snapshot_sha256": "39ecb032743425a9f9b53699d32343539295ec7f2af10cd3575a5061fbb84291",
   "source_fingerprints": {
     "llm_perf/native/cost_model_fast/core_single_op.cpp": "ee4939d2544f8eccd987f7e8007da3f10ffc5190f0e24103bc34bc1c903022c5",
     "llm_perf/core/llm_graph.py": "18ad9c198f7442e69baff6e8047a0b11329e9803e73fdf1662e686b12900ddc9",
@@ -22,11 +22,16 @@
     "llm_perf/core/deployment_modes.py": "3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159",
     "scripts/evaluate_deployment_modes.py": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
     "llm_perf/core/memory_tiers.py": "901cc5fec7b18b4ffb546775d5d528d8306dfdd22737e511696668152aba0d3b",
-    "scripts/build_formula_pages.py": "85db1544092a11cc324e09e610409ad4f51428683da887dba90c4471be945ad3",
+    "scripts/evaluate_deepseek_v41.py": "737aa10b19a4e88f17d9ee963537ea1f67a3216e64d28ac115741cdec3754bce",
+    "scripts/build_formula_pages.py": "feb4c0160f10aa436cb6c43bf673761a83f659be23b0b50e827015f4ad7e591a",
     "scripts/algorithm_formula_catalog.py": "bda1f3f695977c84e1c87b4e47d3a3dd709ab318b53c7441357cbc0f3079fba6",
     "llm_perf/core/model.py": "e14554c35039d45232401e2977003ac114605b67b7d4fdae53b959745b69b23e",
     "llm_perf/tools/hf_to_llmperf_xlsx.py": "b6532b9c4aa11ff698ba0be2042ccc5b6427d57742731c8d3b0223aca871de4e",
-    "data/deepseek_v41_flash_config.json": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879"
+    "data/deepseek_v41_flash_config.json": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+    "data/gpu_info.csv": "e6893aa8f99d379f85093e037c1a06d0e6f44acb9ef40e6ae6a784633d514c2e",
+    "data/groq_lpx3_memory.json": "f1765a0f883894c2fcc306e5206d11227ba512cea42bb3239924e33e4dbf3b80",
+    "scripts/deployment_communication_guide.py": "0456498bfd488900df5584079317ddd7a4916077e5186e1dc01032b4c0b575b4",
+    "llm_perf/native/cost_model_fast/comm.cpp": "a1a666b058b8fdb6f5491d68074070ac382e80a88578d179b53030e239100e71"
   },
   "status": "audited equations; analytical estimates, not benchmark calibration",
   "formulas": [
@@ -948,6 +953,1760 @@
       "source_anchor": "def transfer_cost",
       "notes": "BW_tray=2736.072GB/s沿用仓库未校准假设，并非官方DDR5带宽。prefill的p为原生最多4请求/attention副本的微批次数；draft decode p=5，主verify p=1。权重保守读取所有专家，cache完整读写，activation reserve逐层读写；activation已经覆盖整batch和query窗口，不再乘p。无搬运计算重叠收益，无凭空增加DRAM启动延迟。该解析模型不代表编译器tile调度或实机性能。",
       "variables": "E为分层分配后的外部驻留bytes/device；L为主模型或draft层数。",
+      "domain": "algorithm",
+      "source": {
+        "file": "llm_perf/core/memory_tiers.py",
+        "line": 33,
+        "sha256": "901cc5fec7b18b4ffb546775d5d528d8306dfdd22737e511696668152aba0d3b",
+        "excerpt": "\ndef transfer_cost(plan, *, layers, weight_passes=1):\n    \"\"\"Read spilled weights/cache each pass; read/write activation spill per layer.\n\nAll experts are streamed conservatively, without assuming an active-expert cache.\nCache traffic counts a full read and write (an upper proxy). Activation reserve\nalready covers the whole batch/query window, so its traffic is not multiplied\nagain by weight passes. No overlap or unverified DRAM transaction latency is used.\n\"\"\"\n    if any(isinstance(v, bool) or not isinstance(v, int) or v < 1 for v in (layers, weight_passes)):\n        raise ValueError('Positive integer layers and passes required')\n    spill = plan['external_components']\n    traffic = dict(weights=spill['weights']*weight_passes,\n                   persistent=2*spill['persistent']*weight_passes,\n                   activation=2*spill['activation_reserve']*layers)\n    total = sum(traffic.values())\n    bw = plan['bandwidth_GBps_per_device']\n    if total and (not math.isfinite(bw) or bw <= 0):\n        raise ValueError('External-memory bandwidth must be positive when data spills')\n    return dict(bytes_per_device=total, byte_components=traffic,\n                bandwidth_GBps_per_device=bw, weight_passes=weight_passes, layers=layers,"
+      }
+    },
+    {
+      "id": "algo-communication-units",
+      "title": "先看口径：跨池 NIC、池内互联与外部内存",
+      "category": "GPU/LPU 数据传输",
+      "equation": "T_link(s) = bytes/(BW_GBps × 10^9) + messages × latency_ns/10^9\nBW_shared = min(NIC bandwidth of ALL allocated pools)\nlatency_shared = max(NIC latency of ALL allocated pools)",
+      "notes": "下列数值来自仓库硬件快照，不是新的硬件实测或当前厂商性能保证。跨池统一为一个 shared_fabric，不能将池数、GPU数、LPU数或机架数直接乘到带宽上。",
+      "variables": "B=整池实际请求数；I=输入长度；O=输出长度（含prefill首token）；Q=k+1，范围1…6；L=主模型层数；D=hidden_size；m=hc_mult；V=词表；R=被draft读取的主模型层数；W=滑窗。BF16=2bytes，FP32=4bytes，int64=8bytes；GB=10^9bytes，GiB=2^30bytes。",
+      "source_anchor": "def deployment_links",
+      "steps": [
+        "跨池链路：纯Rubin GPU池取400 GB/s；只要已分配池中包含groq-lpx3，就取200 GB/s；两者NIC latency均为6000 ns=6 μs。这是全局最慢端点规则，不是每条边单独选带宽。",
+        "即使最后选择k=0、draft池闲置，已分配的LPU仍参与min/max，因此GPU→GPU的PD迁移也可能沿用200 GB/s。这是当前保守模型的限制。",
+        "同机架的GPU→GPU跨池传输没有自动改用NVLink；不同LPU池之间也没有自动改用C2C。实际优化放置可以不同，但当前结果没有计入这些收益。",
+        "池内TP/EP通信由native算子模型计算，已在stage中；跨池通信单独进入shared_fabric。LPU外部DRAM搬运也已在stage中，不再塞入shared_fabric。"
+      ],
+      "tables": [
+        {
+          "title": "仓库字段与使用范围",
+          "headers": [
+            "资源/路径",
+            "带宽字段及当前值",
+            "延迟字段及当前值",
+            "计费位置"
+          ],
+          "rows": [
+            [
+              "Rubin 跨池 NIC",
+              "nic_bw=400 GB/s",
+              "nic_latency=6000 ns",
+              "shared_fabric"
+            ],
+            [
+              "LPU 跨池 NIC",
+              "nic_bw=200 GB/s",
+              "nic_latency=6000 ns",
+              "shared_fabric"
+            ],
+            [
+              "Rubin 池内互联",
+              "p2p_bw=1800; gpu_scale_bw=1800 GB/s",
+              "按TP/EP具体算法",
+              "native comm_time_ns"
+            ],
+            [
+              "LPU 池内互联",
+              "p2p_bw=2500; gpu_scale_bw=500 GB/s",
+              "不同collective字段不可混用",
+              "native comm_time_ns"
+            ],
+            [
+              "LPU 外部DRAM",
+              "lpddr_bw=2736.072 GB/s/托盘 ÷ 8 = 342.009 GB/s/颗（未校准假设）",
+              "没有额外的实测DRAM启动延迟项",
+              "native阶段时间 + memory_transfers.seconds"
+            ]
+          ]
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-route-all_gpu",
+      "title": "ALL(GPU)：数据流与逐项计费",
+      "category": "GPU/LPU 数据传输",
+      "equation": "同一 GPU 池：P → 首token → D → 输出\n跨池 shared_fabric = 0；池内TP/EP仍计费",
+      "notes": "PA/PF/DA/DF共用main池。跨池为零不等于总通信为零，native的TP/EP仍在每阶段时间中。",
+      "variables": "表中方向用于说明逻辑依赖；当前代码只累加共享链路的总字节和时间，没有逐边协议/路由仿真。例子为NV72固定总GPU、B=16、I=16384、O=4096；表格列候选阶段，不代表所选k一定执行draft。",
+      "source_anchor": "def deployment_links",
+      "steps": [],
+      "tables": [
+        {
+          "title": "传输路径",
+          "headers": [
+            "逻辑边",
+            "设备方向",
+            "时机与数据",
+            "计费公式"
+          ],
+          "rows": [
+            [
+              "P → D",
+              "同一GPU池",
+              "cache继续驻留，无PD网络迁移",
+              "无跨池字节"
+            ],
+            [
+              "TP / EP ranks",
+              "GPU ↔ GPU",
+              "归约、词表聚合、专家dispatch/combine",
+              "native算子通信"
+            ]
+          ]
+        },
+        {
+          "title": "实际资源分配",
+          "headers": [
+            "Pool",
+            "类型",
+            "数量"
+          ],
+          "rows": [
+            [
+              "main",
+              "GPU",
+              72
+            ]
+          ]
+        },
+        {
+          "title": "直接调用当前代码的数值例子（整批一次阶段调用）",
+          "headers": [
+            "阶段",
+            "Bytes/整批",
+            "逻辑消息数",
+            "时间 ms/整批"
+          ],
+          "rows": [
+            [
+              "A/F prefill",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "PD迁移",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "draft初始化",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "draft一次周期",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "A/F verify Q=1",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "A/F verify Q=6",
+              "0",
+              0,
+              "0.000000"
+            ]
+          ]
+        },
+        {
+          "title": "NV72 / NV144 两种预算：B=16时的PD副本与迁移；同模式AF/draft字节不随GPU数量直接倍增",
+          "headers": [
+            "配置",
+            "各GPU池卡数",
+            "总GPU",
+            "PD副本r",
+            "PD Bytes/整批",
+            "PD ms/整批"
+          ],
+          "rows": [
+            [
+              "NV72 / 总GPU均分",
+              "main=72",
+              72,
+              "—",
+              "0",
+              "0.000000"
+            ],
+            [
+              "NV72 / 每GPU池",
+              "main=72",
+              72,
+              "—",
+              "0",
+              "0.000000"
+            ],
+            [
+              "NV144 / 总GPU均分",
+              "main=144",
+              144,
+              "—",
+              "0",
+              "0.000000"
+            ],
+            [
+              "NV144 / 每GPU池",
+              "main=144",
+              144,
+              "—",
+              "0",
+              "0.000000"
+            ]
+          ]
+        }
+      ],
+      "mode_id": "all_gpu",
+      "worked_example": {
+        "batch": 16,
+        "input_len": 16384,
+        "output_len": 4096,
+        "gpu_budget": 72,
+        "pools": {
+          "main": {
+            "kind": "GPU",
+            "count": 72
+          }
+        },
+        "pd_replicas": 8,
+        "byte_work": {
+          "prefill_seconds": 0,
+          "decode_init_seconds": 0,
+          "draft_init_seconds": 0,
+          "draft_seconds": 0,
+          "verify_seconds": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "traffic": {},
+        "bandwidth_GBps": 0,
+        "latency_ns": 0
+      },
+      "scale_examples": [
+        {
+          "scale": 72,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 0,
+          "pd_seconds": 0
+        },
+        {
+          "scale": 72,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 0,
+          "pd_seconds": 0
+        },
+        {
+          "scale": 144,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 0,
+          "pd_seconds": 0
+        },
+        {
+          "scale": 144,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 0,
+          "pd_seconds": 0
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-route-pd_gpu",
+      "title": "P(GPU)+D(GPU)：数据流与逐项计费",
+      "category": "GPU/LPU 数据传输",
+      "equation": "P(GPU) ── cache + suffix IDs ──▶ D(GPU)\nP池内A/F；D池内A/F；没有draft",
+      "notes": "P产生首token，D承接后续decode。主模型权重在P/D池各自驻留，不按每token重新通过PD链路发送。",
+      "variables": "表中方向用于说明逻辑依赖；当前代码只累加共享链路的总字节和时间，没有逐边协议/路由仿真。例子为NV72固定总GPU、B=16、I=16384、O=4096；表格列候选阶段，不代表所选k一定执行draft。",
+      "source_anchor": "def deployment_links",
+      "steps": [],
+      "tables": [
+        {
+          "title": "传输路径",
+          "headers": [
+            "逻辑边",
+            "设备方向",
+            "时机与数据",
+            "计费公式"
+          ],
+          "rows": [
+            [
+              "P → D",
+              "GPU → GPU",
+              "首token后且O>1，迁移一次",
+              "S_PD；n=L"
+            ],
+            [
+              "PA ↔ PF / DA ↔ DF",
+              "各在同一个P/D池",
+              "无单独跨池AF账单",
+              "native池内通信仍计费"
+            ]
+          ]
+        },
+        {
+          "title": "实际资源分配",
+          "headers": [
+            "Pool",
+            "类型",
+            "数量"
+          ],
+          "rows": [
+            [
+              "prefill",
+              "GPU",
+              36
+            ],
+            [
+              "decode",
+              "GPU",
+              36
+            ]
+          ]
+        },
+        {
+          "title": "直接调用当前代码的数值例子（整批一次阶段调用）",
+          "headers": [
+            "阶段",
+            "Bytes/整批",
+            "逻辑消息数",
+            "时间 ms/整批"
+          ],
+          "rows": [
+            [
+              "A/F prefill",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "PD迁移",
+              "1,107,821,184",
+              40,
+              "3.009553"
+            ],
+            [
+              "draft初始化",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "draft一次周期",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "A/F verify Q=1",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "A/F verify Q=6",
+              "0",
+              0,
+              "0.000000"
+            ]
+          ]
+        },
+        {
+          "title": "NV72 / NV144 两种预算：B=16时的PD副本与迁移；同模式AF/draft字节不随GPU数量直接倍增",
+          "headers": [
+            "配置",
+            "各GPU池卡数",
+            "总GPU",
+            "PD副本r",
+            "PD Bytes/整批",
+            "PD ms/整批"
+          ],
+          "rows": [
+            [
+              "NV72 / 总GPU均分",
+              "prefill=36; decode=36",
+              72,
+              4,
+              "1,107,821,184",
+              "3.009553"
+            ],
+            [
+              "NV72 / 每GPU池",
+              "prefill=72; decode=72",
+              144,
+              8,
+              "2,215,641,728",
+              "5.779104"
+            ],
+            [
+              "NV144 / 总GPU均分",
+              "prefill=72; decode=72",
+              144,
+              8,
+              "2,215,641,728",
+              "5.779104"
+            ],
+            [
+              "NV144 / 每GPU池",
+              "prefill=144; decode=144",
+              288,
+              8,
+              "2,215,641,728",
+              "5.779104"
+            ]
+          ]
+        }
+      ],
+      "mode_id": "pd_gpu",
+      "worked_example": {
+        "batch": 16,
+        "input_len": 16384,
+        "output_len": 4096,
+        "gpu_budget": 72,
+        "pools": {
+          "prefill": {
+            "kind": "GPU",
+            "count": 36
+          },
+          "decode": {
+            "kind": "GPU",
+            "count": 36
+          }
+        },
+        "pd_replicas": 4,
+        "byte_work": {
+          "prefill_seconds": 0.0,
+          "decode_init_seconds": 1107821184.0,
+          "verify_seconds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "draft_seconds": 0.0,
+          "draft_init_seconds": 0.0
+        },
+        "traffic": {
+          "prefill_seconds": 0.0,
+          "decode_init_seconds": 0.00300955296,
+          "verify_seconds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "draft_seconds": 0.0,
+          "draft_init_seconds": 0.0
+        },
+        "bandwidth_GBps": 400.0,
+        "latency_ns": 6000.0
+      },
+      "scale_examples": [
+        {
+          "scale": 72,
+          "policy": "总GPU均分",
+          "pd_replicas": 4,
+          "pd_bytes": 1107821184.0,
+          "pd_seconds": 0.00300955296
+        },
+        {
+          "scale": 72,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.00577910432
+        },
+        {
+          "scale": 144,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.00577910432
+        },
+        {
+          "scale": 144,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.00577910432
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-route-pd_draft_gpu",
+      "title": "P(GPU)+D(GPU)+draft(GPU)：数据流与逐项计费",
+      "category": "GPU/LPU 数据传输",
+      "equation": "P(GPU) ── cache ──▶ D(GPU)\nP(GPU) ── prefix hidden ──▶ draft(GPU)\nD(GPU) ◀── proposal / probabilities ──▶ draft(GPU)（hidden反馈）",
+      "notes": "P、D、draft是三个独立池，尽管都是GPU，跨池仍用NIC模型。草稿计算始终执行5个位置；选用前缀k决定主模型verify宽度Q=k+1。",
+      "variables": "表中方向用于说明逻辑依赖；当前代码只累加共享链路的总字节和时间，没有逐边协议/路由仿真。例子为NV72固定总GPU、B=16、I=16384、O=4096；表格列候选阶段，不代表所选k一定执行draft。",
+      "source_anchor": "def deployment_links",
+      "steps": [],
+      "tables": [
+        {
+          "title": "传输路径",
+          "headers": [
+            "逻辑边",
+            "设备方向",
+            "时机与数据",
+            "计费公式"
+          ],
+          "rows": [
+            [
+              "P → D",
+              "GPU → GPU",
+              "一次PD迁移",
+              "S_PD；n=L"
+            ],
+            [
+              "P → draft",
+              "GPU → GPU",
+              "有推测周期时初始化一次",
+              "S_init；n=1"
+            ],
+            [
+              "D ↔ draft",
+              "GPU ↔ GPU",
+              "每个推测周期",
+              "S_cycle；n=3"
+            ]
+          ]
+        },
+        {
+          "title": "实际资源分配",
+          "headers": [
+            "Pool",
+            "类型",
+            "数量"
+          ],
+          "rows": [
+            [
+              "prefill",
+              "GPU",
+              24
+            ],
+            [
+              "decode",
+              "GPU",
+              24
+            ],
+            [
+              "draft",
+              "GPU",
+              24
+            ]
+          ]
+        },
+        {
+          "title": "直接调用当前代码的数值例子（整批一次阶段调用）",
+          "headers": [
+            "阶段",
+            "Bytes/整批",
+            "逻辑消息数",
+            "时间 ms/整批"
+          ],
+          "rows": [
+            [
+              "A/F prefill",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "PD迁移",
+              "2,215,641,728",
+              40,
+              "5.779104"
+            ],
+            [
+              "draft初始化",
+              "62,914,560",
+              1,
+              "0.163286"
+            ],
+            [
+              "draft一次周期",
+              "44,319,936",
+              3,
+              "0.128800"
+            ],
+            [
+              "A/F verify Q=1",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "A/F verify Q=6",
+              "0",
+              0,
+              "0.000000"
+            ]
+          ]
+        },
+        {
+          "title": "NV72 / NV144 两种预算：B=16时的PD副本与迁移；同模式AF/draft字节不随GPU数量直接倍增",
+          "headers": [
+            "配置",
+            "各GPU池卡数",
+            "总GPU",
+            "PD副本r",
+            "PD Bytes/整批",
+            "PD ms/整批"
+          ],
+          "rows": [
+            [
+              "NV72 / 总GPU均分",
+              "prefill=24; decode=24; draft=24",
+              72,
+              8,
+              "2,215,641,728",
+              "5.779104"
+            ],
+            [
+              "NV72 / 每GPU池",
+              "prefill=72; decode=72; draft=72",
+              216,
+              8,
+              "2,215,641,728",
+              "5.779104"
+            ],
+            [
+              "NV144 / 总GPU均分",
+              "prefill=48; decode=48; draft=48",
+              144,
+              8,
+              "2,215,641,728",
+              "5.779104"
+            ],
+            [
+              "NV144 / 每GPU池",
+              "prefill=144; decode=144; draft=144",
+              432,
+              8,
+              "2,215,641,728",
+              "5.779104"
+            ]
+          ]
+        }
+      ],
+      "mode_id": "pd_draft_gpu",
+      "worked_example": {
+        "batch": 16,
+        "input_len": 16384,
+        "output_len": 4096,
+        "gpu_budget": 72,
+        "pools": {
+          "prefill": {
+            "kind": "GPU",
+            "count": 24
+          },
+          "decode": {
+            "kind": "GPU",
+            "count": 24
+          },
+          "draft": {
+            "kind": "GPU",
+            "count": 24
+          }
+        },
+        "pd_replicas": 8,
+        "byte_work": {
+          "prefill_seconds": 0.0,
+          "decode_init_seconds": 2215641728.0,
+          "verify_seconds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "draft_seconds": 44319936.0,
+          "draft_init_seconds": 62914560.0
+        },
+        "traffic": {
+          "prefill_seconds": 0.0,
+          "decode_init_seconds": 0.00577910432,
+          "verify_seconds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "draft_seconds": 0.00012879984,
+          "draft_init_seconds": 0.0001632864
+        },
+        "bandwidth_GBps": 400.0,
+        "latency_ns": 6000.0
+      },
+      "scale_examples": [
+        {
+          "scale": 72,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.00577910432
+        },
+        {
+          "scale": 72,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.00577910432
+        },
+        {
+          "scale": 144,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.00577910432
+        },
+        {
+          "scale": 144,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.00577910432
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-route-pd_draft_lpu",
+      "title": "P(GPU)+D(GPU)+draft(LPU)：数据流与逐项计费",
+      "category": "GPU/LPU 数据传输",
+      "equation": "P(GPU) ── cache ──▶ D(GPU)\nP(GPU) ── prefix hidden ──▶ draft(LPU)\nD(GPU) ◀── proposal / probabilities ──▶ draft(LPU)（hidden反馈）",
+      "notes": "LPU只承担draft，主模型P/D仍在GPU。外部DRAM允许draft驻留，但外部搬运及GPU/LPU交换会降低其收益；k=0时不执行draft初始化或周期交换。",
+      "variables": "表中方向用于说明逻辑依赖；当前代码只累加共享链路的总字节和时间，没有逐边协议/路由仿真。例子为NV72固定总GPU、B=16、I=16384、O=4096；表格列候选阶段，不代表所选k一定执行draft。",
+      "source_anchor": "def deployment_links",
+      "steps": [],
+      "tables": [
+        {
+          "title": "传输路径",
+          "headers": [
+            "逻辑边",
+            "设备方向",
+            "时机与数据",
+            "计费公式"
+          ],
+          "rows": [
+            [
+              "P → D",
+              "GPU → GPU",
+              "一次PD迁移；共享NIC取200 GB/s",
+              "S_PD；n=L"
+            ],
+            [
+              "P → draft",
+              "GPU → LPU",
+              "有推测周期时初始化一次",
+              "S_init；n=1"
+            ],
+            [
+              "D ↔ draft",
+              "GPU ↔ LPU",
+              "每个推测周期",
+              "S_cycle；n=3"
+            ],
+            [
+              "draft本地外部DRAM ↔ SRAM",
+              "LPU存储层",
+              "溢出数据访问",
+              "T_ext已在draft阶段内"
+            ]
+          ]
+        },
+        {
+          "title": "实际资源分配",
+          "headers": [
+            "Pool",
+            "类型",
+            "数量"
+          ],
+          "rows": [
+            [
+              "prefill",
+              "GPU",
+              36
+            ],
+            [
+              "decode",
+              "GPU",
+              36
+            ],
+            [
+              "draft",
+              "LPU",
+              256
+            ]
+          ]
+        },
+        {
+          "title": "直接调用当前代码的数值例子（整批一次阶段调用）",
+          "headers": [
+            "阶段",
+            "Bytes/整批",
+            "逻辑消息数",
+            "时间 ms/整批"
+          ],
+          "rows": [
+            [
+              "A/F prefill",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "PD迁移",
+              "1,107,821,184",
+              40,
+              "5.779106"
+            ],
+            [
+              "draft初始化",
+              "62,914,560",
+              1,
+              "0.320573"
+            ],
+            [
+              "draft一次周期",
+              "44,319,936",
+              3,
+              "0.239600"
+            ],
+            [
+              "A/F verify Q=1",
+              "0",
+              0,
+              "0.000000"
+            ],
+            [
+              "A/F verify Q=6",
+              "0",
+              0,
+              "0.000000"
+            ]
+          ]
+        },
+        {
+          "title": "NV72 / NV144 两种预算：B=16时的PD副本与迁移；同模式AF/draft字节不随GPU数量直接倍增",
+          "headers": [
+            "配置",
+            "各GPU池卡数",
+            "总GPU",
+            "PD副本r",
+            "PD Bytes/整批",
+            "PD ms/整批"
+          ],
+          "rows": [
+            [
+              "NV72 / 总GPU均分",
+              "prefill=36; decode=36",
+              72,
+              4,
+              "1,107,821,184",
+              "5.779106"
+            ],
+            [
+              "NV72 / 每GPU池",
+              "prefill=72; decode=72",
+              144,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ],
+            [
+              "NV144 / 总GPU均分",
+              "prefill=72; decode=72",
+              144,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ],
+            [
+              "NV144 / 每GPU池",
+              "prefill=144; decode=144",
+              288,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ]
+          ]
+        }
+      ],
+      "mode_id": "pd_draft_lpu",
+      "worked_example": {
+        "batch": 16,
+        "input_len": 16384,
+        "output_len": 4096,
+        "gpu_budget": 72,
+        "pools": {
+          "prefill": {
+            "kind": "GPU",
+            "count": 36
+          },
+          "decode": {
+            "kind": "GPU",
+            "count": 36
+          },
+          "draft": {
+            "kind": "LPU",
+            "count": 256
+          }
+        },
+        "pd_replicas": 4,
+        "byte_work": {
+          "prefill_seconds": 0.0,
+          "decode_init_seconds": 1107821184.0,
+          "verify_seconds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "draft_seconds": 44319936.0,
+          "draft_init_seconds": 62914560.0
+        },
+        "traffic": {
+          "prefill_seconds": 0.0,
+          "decode_init_seconds": 0.0057791059199999995,
+          "verify_seconds": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          "draft_seconds": 0.00023959968,
+          "draft_init_seconds": 0.0003205728
+        },
+        "bandwidth_GBps": 200.0,
+        "latency_ns": 6000.0
+      },
+      "scale_examples": [
+        {
+          "scale": 72,
+          "policy": "总GPU均分",
+          "pd_replicas": 4,
+          "pd_bytes": 1107821184.0,
+          "pd_seconds": 0.0057791059199999995
+        },
+        {
+          "scale": 72,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        },
+        {
+          "scale": 144,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        },
+        {
+          "scale": 144,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-route-pafd_split_draft_lpu",
+      "title": "PA(GPU)+PF(LPU)+DA(GPU)+DF(LPU)+draft(LPU)：数据流与逐项计费",
+      "category": "GPU/LPU 数据传输",
+      "equation": "Prefill：PA(GPU) ⇄ PF(LPU)，逐层往返\nPD：PA(GPU) ── cache ──▶ DA(GPU)\nDecode：DA(GPU) ⇄ DF(LPU)，逐层往返\nPA/DA(GPU) ⇄ draft(LPU)，初始化/周期交换",
+      "notes": "按之前的临时解释，将用户重复写的PA/DA(LPU)视作PF/DF(LPU)。PF、DF、draft为三个独立LPU池；权重副本分别计入驻留。",
+      "variables": "表中方向用于说明逻辑依赖；当前代码只累加共享链路的总字节和时间，没有逐边协议/路由仿真。例子为NV72固定总GPU、B=16、I=16384、O=4096；表格列候选阶段，不代表所选k一定执行draft。",
+      "source_anchor": "def deployment_links",
+      "steps": [],
+      "tables": [
+        {
+          "title": "传输路径",
+          "headers": [
+            "逻辑边",
+            "设备方向",
+            "时机与数据",
+            "计费公式"
+          ],
+          "rows": [
+            [
+              "PA ↔ PF",
+              "GPU ↔ LPU",
+              "每层prefill激活/FFN结果往返",
+              "S_AF,P；n=2L"
+            ],
+            [
+              "PA → DA",
+              "GPU → GPU",
+              "PD缓存迁移一次",
+              "S_PD；n=L"
+            ],
+            [
+              "DA ↔ DF",
+              "GPU ↔ LPU",
+              "每个verify周期逐层往返",
+              "S_AF,V(Q)；n=2L"
+            ],
+            [
+              "PA → draft；DA ↔ draft",
+              "GPU → LPU；GPU ↔ LPU",
+              "初始化及推测周期",
+              "S_init + S_cycle"
+            ],
+            [
+              "PF / DF / draft 外部DRAM ↔ SRAM",
+              "各自LPU池",
+              "不属于GPU/LPU网络字节",
+              "按各自T_ext计入阶段"
+            ]
+          ]
+        },
+        {
+          "title": "实际资源分配",
+          "headers": [
+            "Pool",
+            "类型",
+            "数量"
+          ],
+          "rows": [
+            [
+              "PA",
+              "GPU",
+              36
+            ],
+            [
+              "PF",
+              "LPU",
+              256
+            ],
+            [
+              "DA",
+              "GPU",
+              36
+            ],
+            [
+              "DF",
+              "LPU",
+              256
+            ],
+            [
+              "draft",
+              "LPU",
+              256
+            ]
+          ]
+        },
+        {
+          "title": "直接调用当前代码的数值例子（整批一次阶段调用）",
+          "headers": [
+            "阶段",
+            "Bytes/整批",
+            "逻辑消息数",
+            "时间 ms/整批"
+          ],
+          "rows": [
+            [
+              "A/F prefill",
+              "432,852,172,800",
+              80,
+              "2164.740864"
+            ],
+            [
+              "PD迁移",
+              "1,107,821,184",
+              40,
+              "5.779106"
+            ],
+            [
+              "draft初始化",
+              "62,914,560",
+              1,
+              "0.320573"
+            ],
+            [
+              "draft一次周期",
+              "44,319,936",
+              3,
+              "0.239600"
+            ],
+            [
+              "A/F verify Q=1",
+              "52,428,800",
+              80,
+              "0.742144"
+            ],
+            [
+              "A/F verify Q=6",
+              "314,572,800",
+              80,
+              "2.052864"
+            ]
+          ]
+        },
+        {
+          "title": "NV72 / NV144 两种预算：B=16时的PD副本与迁移；同模式AF/draft字节不随GPU数量直接倍增",
+          "headers": [
+            "配置",
+            "各GPU池卡数",
+            "总GPU",
+            "PD副本r",
+            "PD Bytes/整批",
+            "PD ms/整批"
+          ],
+          "rows": [
+            [
+              "NV72 / 总GPU均分",
+              "PA=36; DA=36",
+              72,
+              4,
+              "1,107,821,184",
+              "5.779106"
+            ],
+            [
+              "NV72 / 每GPU池",
+              "PA=72; DA=72",
+              144,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ],
+            [
+              "NV144 / 总GPU均分",
+              "PA=72; DA=72",
+              144,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ],
+            [
+              "NV144 / 每GPU池",
+              "PA=144; DA=144",
+              288,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ]
+          ]
+        }
+      ],
+      "mode_id": "pafd_split_draft_lpu",
+      "worked_example": {
+        "batch": 16,
+        "input_len": 16384,
+        "output_len": 4096,
+        "gpu_budget": 72,
+        "pools": {
+          "PA": {
+            "kind": "GPU",
+            "count": 36
+          },
+          "PF": {
+            "kind": "LPU",
+            "count": 256
+          },
+          "DA": {
+            "kind": "GPU",
+            "count": 36
+          },
+          "DF": {
+            "kind": "LPU",
+            "count": 256
+          },
+          "draft": {
+            "kind": "LPU",
+            "count": 256
+          }
+        },
+        "pd_replicas": 4,
+        "byte_work": {
+          "prefill_seconds": 432852172800.0,
+          "decode_init_seconds": 1107821184.0,
+          "verify_seconds": [
+            52428800.0,
+            104857600.0,
+            157286400.0,
+            209715200.0,
+            262144000.0,
+            314572800.0
+          ],
+          "draft_seconds": 44319936.0,
+          "draft_init_seconds": 62914560.0
+        },
+        "traffic": {
+          "prefill_seconds": 2.164740864,
+          "decode_init_seconds": 0.0057791059199999995,
+          "verify_seconds": [
+            0.000742144,
+            0.001004288,
+            0.001266432,
+            0.001528576,
+            0.00179072,
+            0.002052864
+          ],
+          "draft_seconds": 0.00023959968,
+          "draft_init_seconds": 0.0003205728
+        },
+        "bandwidth_GBps": 200.0,
+        "latency_ns": 6000.0
+      },
+      "scale_examples": [
+        {
+          "scale": 72,
+          "policy": "总GPU均分",
+          "pd_replicas": 4,
+          "pd_bytes": 1107821184.0,
+          "pd_seconds": 0.0057791059199999995
+        },
+        {
+          "scale": 72,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        },
+        {
+          "scale": 144,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        },
+        {
+          "scale": 144,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-route-prefill_gpu_decode_lpu",
+      "title": "PA(GPU)+PF(GPU)+DA(LPU)+DF(LPU)+draft(LPU)：数据流与逐项计费",
+      "category": "GPU/LPU 数据传输",
+      "equation": "Prefill：PA(GPU) ⇄ PF(GPU)，两个独立GPU池\nPD：PA(GPU) ── cache ──▶ DA(LPU)\nDecode：DA(LPU) ⇄ DF(LPU)，两个独立LPU池\nPA(GPU) ── prefix hidden ──▶ draft(LPU)\nDA(LPU) ⇄ draft(LPU)，周期交换",
+      "notes": "同为GPU或同为LPU并不表示共享池。当前每条跨池边仍竞争同一200 GB/s shared_fabric；DA/DF/draft的外部内存访问另在各阶段内计费。",
+      "variables": "表中方向用于说明逻辑依赖；当前代码只累加共享链路的总字节和时间，没有逐边协议/路由仿真。例子为NV72固定总GPU、B=16、I=16384、O=4096；表格列候选阶段，不代表所选k一定执行draft。",
+      "source_anchor": "def deployment_links",
+      "steps": [],
+      "tables": [
+        {
+          "title": "传输路径",
+          "headers": [
+            "逻辑边",
+            "设备方向",
+            "时机与数据",
+            "计费公式"
+          ],
+          "rows": [
+            [
+              "PA ↔ PF",
+              "GPU ↔ GPU",
+              "独立GPU池，逐层prefill往返",
+              "S_AF,P；n=2L"
+            ],
+            [
+              "PA → DA",
+              "GPU → LPU",
+              "缓存和suffix IDs迁移一次",
+              "S_PD；n=L"
+            ],
+            [
+              "DA ↔ DF",
+              "LPU ↔ LPU",
+              "不同LPU池，每周期逐层往返",
+              "S_AF,V(Q)；n=2L"
+            ],
+            [
+              "PA → draft",
+              "GPU → LPU",
+              "初始化一次",
+              "S_init；n=1"
+            ],
+            [
+              "DA ↔ draft",
+              "LPU ↔ LPU",
+              "每个推测周期",
+              "S_cycle；n=3"
+            ]
+          ]
+        },
+        {
+          "title": "实际资源分配",
+          "headers": [
+            "Pool",
+            "类型",
+            "数量"
+          ],
+          "rows": [
+            [
+              "PA",
+              "GPU",
+              36
+            ],
+            [
+              "PF",
+              "GPU",
+              36
+            ],
+            [
+              "DA",
+              "LPU",
+              256
+            ],
+            [
+              "DF",
+              "LPU",
+              256
+            ],
+            [
+              "draft",
+              "LPU",
+              256
+            ]
+          ]
+        },
+        {
+          "title": "直接调用当前代码的数值例子（整批一次阶段调用）",
+          "headers": [
+            "阶段",
+            "Bytes/整批",
+            "逻辑消息数",
+            "时间 ms/整批"
+          ],
+          "rows": [
+            [
+              "A/F prefill",
+              "432,852,172,800",
+              80,
+              "2164.740864"
+            ],
+            [
+              "PD迁移",
+              "2,215,641,728",
+              40,
+              "11.318209"
+            ],
+            [
+              "draft初始化",
+              "62,914,560",
+              1,
+              "0.320573"
+            ],
+            [
+              "draft一次周期",
+              "44,319,936",
+              3,
+              "0.239600"
+            ],
+            [
+              "A/F verify Q=1",
+              "52,428,800",
+              80,
+              "0.742144"
+            ],
+            [
+              "A/F verify Q=6",
+              "314,572,800",
+              80,
+              "2.052864"
+            ]
+          ]
+        },
+        {
+          "title": "NV72 / NV144 两种预算：B=16时的PD副本与迁移；同模式AF/draft字节不随GPU数量直接倍增",
+          "headers": [
+            "配置",
+            "各GPU池卡数",
+            "总GPU",
+            "PD副本r",
+            "PD Bytes/整批",
+            "PD ms/整批"
+          ],
+          "rows": [
+            [
+              "NV72 / 总GPU均分",
+              "PA=36; PF=36",
+              72,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ],
+            [
+              "NV72 / 每GPU池",
+              "PA=72; PF=72",
+              144,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ],
+            [
+              "NV144 / 总GPU均分",
+              "PA=72; PF=72",
+              144,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ],
+            [
+              "NV144 / 每GPU池",
+              "PA=144; PF=144",
+              288,
+              8,
+              "2,215,641,728",
+              "11.318209"
+            ]
+          ]
+        }
+      ],
+      "mode_id": "prefill_gpu_decode_lpu",
+      "worked_example": {
+        "batch": 16,
+        "input_len": 16384,
+        "output_len": 4096,
+        "gpu_budget": 72,
+        "pools": {
+          "PA": {
+            "kind": "GPU",
+            "count": 36
+          },
+          "PF": {
+            "kind": "GPU",
+            "count": 36
+          },
+          "DA": {
+            "kind": "LPU",
+            "count": 256
+          },
+          "DF": {
+            "kind": "LPU",
+            "count": 256
+          },
+          "draft": {
+            "kind": "LPU",
+            "count": 256
+          }
+        },
+        "pd_replicas": 8,
+        "byte_work": {
+          "prefill_seconds": 432852172800.0,
+          "decode_init_seconds": 2215641728.0,
+          "verify_seconds": [
+            52428800.0,
+            104857600.0,
+            157286400.0,
+            209715200.0,
+            262144000.0,
+            314572800.0
+          ],
+          "draft_seconds": 44319936.0,
+          "draft_init_seconds": 62914560.0
+        },
+        "traffic": {
+          "prefill_seconds": 2.164740864,
+          "decode_init_seconds": 0.01131820864,
+          "verify_seconds": [
+            0.000742144,
+            0.001004288,
+            0.001266432,
+            0.001528576,
+            0.00179072,
+            0.002052864
+          ],
+          "draft_seconds": 0.00023959968,
+          "draft_init_seconds": 0.0003205728
+        },
+        "bandwidth_GBps": 200.0,
+        "latency_ns": 6000.0
+      },
+      "scale_examples": [
+        {
+          "scale": 72,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        },
+        {
+          "scale": 72,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        },
+        {
+          "scale": 144,
+          "policy": "总GPU均分",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        },
+        {
+          "scale": 144,
+          "policy": "每GPU池",
+          "pd_replicas": 8,
+          "pd_bytes": 2215641728.0,
+          "pd_seconds": 0.01131820864
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-communication-pd-cache",
+      "title": "PD迁移：不是整个模型，也不只是普通KV",
+      "category": "GPU/LPU 数据传输",
+      "equation": "S_PD = B × [M_cache(I) × max(TP_PA, TP_DA) + 8(g−1) + 16]\nM_cache(I) = M_global + M_window + M_compressor\nT_PD = S_PD/(BW_shared × 10^9) + L × latency_ns/10^9",
+      "notes": "P/PA只向D/DA迁移其后续decode所需状态。模型权重和完整Engram表已在目标池驻留，不在这笔网络流量里；Engram只传suffix IDs和16bytes位置/头部。迁移在首token之后，O>1时一次；计入E2E/TPOT，不计入TTFT。",
+      "variables": "g=engram_max_ngram_size；M_cache为单请求、单attention缓存副本。TP副本数取源/目的较大值，非总GPU数；B为真实整池batch，未用native补齐batch。",
+      "source_anchor": "def deployment_links",
+      "steps": [
+        "全局cache按真正的owner层保存，并带压缩、量化scale；Reuse层不重复保存global cache。",
+        "local SWA窗口在各层保存；compressor状态独立计入。PD取prefill末端I，不能误用性能曲线的末端上下文I+O。",
+        "L条启动延迟是当前实现的逻辑消息约定，不是推导出的网络包数；没有逐packet头部、ACK或重传开销。"
+      ],
+      "tables": [
+        {
+          "title": "当前I=16384的单请求缓存分解",
+          "headers": [
+            "组成",
+            "Bytes"
+          ],
+          "rows": [
+            [
+              "global",
+              14581760.0
+            ],
+            [
+              "SWA windows",
+              2703360
+            ],
+            [
+              "compressor state",
+              24576
+            ],
+            [
+              "合计 M_cache(I)",
+              17309696.0
+            ]
+          ]
+        }
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-communication-cache-layout",
+      "title": "PD缓存字节如何从V4.1形状计算",
+      "category": "GPU/LPU 数据传输",
+      "equation": "b_main=d/2+ceil(d/16); b_index=d_i/2+ceil(d_i/32); b_local=d+ceil(d/32)\nM_global=Σ_owner floor(I/r_owner) × (b_main+b_index)\nM_window=L × min(I,W) × b_local\nM_compressor=Σ_owner,r>1 2 × r_owner × d × 4",
+      "notes": "packed主cache采用FP4载荷和每16元素的scale；index cache采用FP4载荷和每32元素的scale；local窗口采用每元素1byte加每32元素scale。compressor保留两份FP32状态。这里只展开已执行cache_memory公式，不把标准MHA的K/V双份公式套到共享latent缓存。",
+      "variables": "d=head_dim；d_i=index_head_dim；r_owner=该global owner层压缩比；I为输入长度。",
+      "source_anchor": "def cache_memory",
+      "steps": [],
+      "tables": [],
+      "domain": "algorithm",
+      "source": {
+        "file": "llm_perf/tools/deepseek_v41.py",
+        "line": 58,
+        "sha256": "58df35f4511b7f4d21b54f0cdae73f004d499e971174af0ac0d908bef944f3a3",
+        "excerpt": "\ndef cache_memory(config, *, seq_len, policy='packed'):\n    c = text_config(config)\n    if policy not in {'packed', 'reference'} or seq_len < 0:\n        raise ValueError('Invalid cache policy or sequence length')\n    d, di = c['head_dim'], c['index_head_dim']\n    # Main NVFP4: E2M1 + 1 E4M3/16. Index MXFP4: E2M1 + 1 E8M0/32.\n    main = d/2 + math.ceil(d/16) if policy == 'packed' else d*2\n    index = di/2 + math.ceil(di/32) if policy == 'packed' else di*2\n    local = d + math.ceil(d/32) if policy == 'packed' else d*2\n    owners = [x for x in layer_schedule(config) if x['mode'] == 'full']\n    global_bytes = sum((seq_len//x['compress_ratio'])*(main+index) for x in owners)\n    window_bytes = c['num_hidden_layers'] * min(seq_len, c['sliding_window']) * local\n    compressor_bytes = sum(2*x['compress_ratio']*d*4 for x in owners if x['compress_ratio'] > 1)\n    ed = c['engram_head_dim']\n    engram_bytes = sum(c['engram_num_embeddings']) * (ed + math.ceil(ed/32))\n    return dict(global_bytes=global_bytes, window_bytes=window_bytes,\n        compressor_state_bytes=compressor_bytes, runtime_bytes=global_bytes+window_bytes+compressor_bytes,\n        engram_table_bytes=engram_bytes, global_bytes_per_token=sum((main+index)/x['compress_ratio'] for x in owners))\n\n"
+      }
+    },
+    {
+      "id": "algo-communication-af",
+      "title": "A/F拆分：为什么每层都要往返",
+      "category": "GPU/LPU 数据传输",
+      "equation": "Q_P = floor(L/2)×I + (L−floor(L/2))×min(I,W)\nS_AF,P = B × Q_P × D × m × 2(bytes BF16) × 2(directions)\nS_AF,V(Q) = B × L × Q × D × m × 2 × 2\nT_AF = S_AF/(BW_shared×10^9) + 2L×latency_ns/10^9",
+      "notes": "Attention侧把当前层完整mHC residual streams交给FFN侧，FFN处理后返回结果，下一层才继续。这里是保守完整stream往返，不是只传D维向量或只做一次整网络边界交换。跨池AF不再乘expert top-k；F池内部的专家dispatch/combine由native另算。即使Q=1/k=0，A/F拆分仍有每周期往返。",
+      "variables": "packed CED前半层处理全prompt，后半层只处理min(I,W)。当前L=40、D=5120、m=4、W=128。",
+      "source_anchor": "def af_transfer_work",
+      "steps": [],
+      "tables": [],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 81,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef af_transfer_work(*, batch, input_len, query_len, hidden, layers, window, streams):\n    \"\"\"Conservative full mHC residual-stream transfer in both directions per layer.\"\"\"\n    values = (batch, input_len, query_len, hidden, layers, window, streams)\n    if any(not isinstance(v, int) or isinstance(v, bool) or v < 1 for v in values):\n        raise ValueError('AF dimensions must be positive integers')\n    tokens = (layers//2)*input_len + (layers-layers//2)*min(input_len, window)\n    width = hidden*streams*2*2  # BF16 residual streams, two boundaries.\n    return dict(prefill_bytes=batch*tokens*width,\n                verify_bytes=batch*layers*query_len*width, messages=2*layers)\n\n\ndef transfer_seconds(byte_count, bandwidth_GBps, latency_ns, messages=1):\n    values = (byte_count, bandwidth_GBps, latency_ns, messages)\n    if any(isinstance(v, bool) or not math.isfinite(v) for v in values):\n        raise ValueError('Transfer inputs must be finite numbers')\n    if byte_count < 0 or bandwidth_GBps <= 0 or latency_ns < 0 or messages < 0:\n        raise ValueError('Invalid transfer size, bandwidth, latency or message count')\n    return byte_count/(bandwidth_GBps*1e9) + messages*latency_ns/1e9\n\n"
+      }
+    },
+    {
+      "id": "algo-communication-draft-init",
+      "title": "Draft初始化：主模型前缀hidden → 草稿池",
+      "category": "GPU/LPU 数据传输",
+      "equation": "H = B × R × D × 2\nS_init = min(I,W) × H\nT_init = S_init/(BW_shared×10^9) + latency_ns/10^9",
+      "notes": "R个主模型目标层的BF16 hidden用于初始化草稿池。采用最后min(I,W)个位置，而不是重新发送整个prompt历史。逻辑源是P/PA已生成的hidden；具体实际系统可从D侧转交，但当前代码没有分跳路由。只要有限输出调度中存在推测周期，初始化在首token之后收取一次；k=0或O=1不收取。",
+      "variables": "当前R=3，目标层索引=[37, 38, 39]；B=整批实际请求数。",
+      "source_anchor": "def deployment_links",
+      "steps": [],
+      "tables": [],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-communication-draft-cycle",
+      "title": "Draft周期交换：hidden反馈、完整概率与控制字节",
+      "category": "GPU/LPU 数据传输",
+      "equation": "S_hidden = 6 × B × R × D × 2\nS_prob = B × 5 × V × 4\nS_ids = B × 5 × 8\nS_scalar = B × 5 × 4\nS_header = B × 16\nS_cycle = S_hidden + S_prob + S_ids + S_scalar + S_header\nT_cycle = S_cycle/(BW_shared×10^9) + 3×latency_ns/10^9",
+      "notes": "主模型侧→draft侧反馈六位置hidden；draft侧→主模型验证/采样侧返回五位置完整FP32概率和候选ID。5个FP32标量和16bytes header为当前聚合控制预算，代码没有定义逐字段线缆协议。方向是逻辑说明：deployment_links仅记录双向合计，不分别建模每条边。",
+      "variables": "五个draft位置固定执行，不因只选择k<5而按k/5缩小；主模型verify宽度仍为Q=k+1。当前V=129280。",
+      "source_anchor": "def deployment_links",
+      "steps": [
+        "完整概率矩阵S_prob通常比token IDs大得多，不能只按5个token ID估算GPU/LPU数据量。",
+        "当前没有另外发送主模型完整概率矩阵、单列接受mask或再加一次反馈包；不能在此公式外重复添加。具体exact-sampling协议尚未仿真。",
+        "n=3是当前合并后的启动次数，不是按5个位置各算3条消息。两方向共享一个串行fabric，无全双工减半或网络/计算重叠收益。"
+      ],
+      "tables": [],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deployment_modes.py",
+        "line": 233,
+        "sha256": "d189ce880dd676554ed7e7ff2e35e313607edf1f7688dbbdf59d1370cf0127bb",
+        "excerpt": "\ndef deployment_links(estimator, pools, roles):\n    \"\"\"Dedicated fabric service demands; traffic shares one serialized uplink.\n\n    Use the slowest participating endpoint's one-NIC bandwidth. No aggregate\n    chip-count multiplier or network overlap is assumed. This conservative shared\n    fabric is counted once, including both directions, never once per role.\n    \"\"\"\n    from llm_perf.tools.deepseek_v41 import cache_memory\n    c, batch = estimator.text, estimator.batch\n    traffic = dict(prefill_seconds=0., decode_init_seconds=0.,\n                   verify_seconds=[0.]*6, draft_seconds=0., draft_init_seconds=0.)\n    byte_work = copy.deepcopy(traffic)\n    hardware = [estimator.hardware(p) for p in pools.values()]\n    bw = min(float(h.nic_bw) for h in hardware)\n    latency = max(float(h.nic_latency) for h in hardware)\n    if bw <= 0 or not math.isfinite(bw):\n        raise ValueError('Explicit positive NIC bandwidth is required for cross-pool transfer')\n    def add(phase, nbytes, messages=1, index=None):\n        seconds = transfer_seconds(nbytes, bw, latency, messages)\n        if index is None:"
+      }
+    },
+    {
+      "id": "algo-communication-workload",
+      "title": "从整批阶段字节到单请求、TTFT与吞吐",
+      "category": "GPU/LPU 数据传输",
+      "equation": "N_spec=Σ_(j=1…5) C_j; C_j=finite-output expected cycles at prefix j\nS_work = S_AF,P + 1[O>1]S_PD + Σ_(j=0…5) C_j S_AF,V(j+1)\n         + 1[N_spec>0]S_init + N_spec S_cycle\nS_request=S_work/B\nT_fabric = T_AF,P + 1[O>1]T_PD + Σ C_j T_AF,V(j+1) + 1[N_spec>0]T_init + N_spec T_cycle\nRPS = B / max(all pool demands, T_fabric); TPS = O × RPS\nTTFT = Σ prefill pool time + T_AF,P; E2E = Σ pool demand + T_fabric; TPOT=(E2E−TTFT)/(O−1)",
+      "notes": "不存在的边对应S/T=0。C_j来自有限输出接受率递推，不能用(O−1)/E粗略替代，也不能只把总bytes除带宽而漏掉每阶段消息延迟。dashboard链路Bytes/request已经除过B，不能再除GPU数或LPU数；表中一次阶段例子尚未按C_j累加。输出包含prefill首token，故剩余decode从O−1开始。O=1时TPOT无定义，页面显示0；k=0时PD和AF可继续执行，draft交换为零。",
+      "variables": "pipeline TPS是资源期望需求上界；E2E是串行阶段/链路成本总和，不是请求排队实测。",
+      "source_anchor": "def _candidate",
+      "steps": [],
+      "tables": [],
+      "domain": "algorithm",
+      "source": {
+        "file": "llm_perf/core/deployment_modes.py",
+        "line": 205,
+        "sha256": "3ef44353590cb2c34450cb94f51b7f29455d97314d95dc627106c0c9de98b159",
+        "excerpt": "\ndef _candidate(config, timings, probabilities, cap, output, batch):\n    counts = _cycle_counts(output - 1, cap, probabilities)\n    speculative_cycles = sum(counts[1:])\n    initialization = float(speculative_cycles > 0)\n    stage = {\n        'prefill': dict(timings['prefill']),\n        'verify': {r: sum(c * v for c, v in zip(counts, curve)) for r, curve in timings['verify'].items()},\n        'draft': {r: v * speculative_cycles for r, v in timings['draft'].items()} if initialization else {},\n        'draft_init': {r: v for r, v in timings['draft_init'].items()} if initialization else {},\n    }\n    pool_demands = dict.fromkeys(config['pools'], 0.0)\n    for role_costs in stage.values():\n        for role, seconds in role_costs.items():\n            pool_demands[config['role_to_pool'][role]] += seconds\n    link_demands = {link: value['prefill_seconds'] + sum(c * v for c, v in zip(counts, value['verify_seconds']))\n                   + speculative_cycles * value['draft_seconds'] + initialization * value['draft_init_seconds']\n                   + int(output > 1) * value['decode_init_seconds']\n                   for link, value in timings['links'].items()}\n    demands = {**{f'pool:{p}': v for p, v in pool_demands.items()},\n               **{f'link:{link}': v for link, v in link_demands.items()}}"
+      }
+    },
+    {
+      "id": "algo-communication-internal",
+      "title": "池内TP/EP：不能与跨池AF/PD混为一笔",
+      "category": "GPU/LPU 数据传输",
+      "equation": "T_stage,native = Σ_operator (op_time_ns + comm_time_ns)/10^9\nAllGather(s): T=(r−1)×[S_local/(BW_GBps×10^9) + latency_ns/10^9]\nRing AllReduce(ns): launch + 2(r−1)hop + 2(r−1)/r × S_rank/BW_GBps\nEP(ns): max(S_local/BW_p2p+lat_local, S_remote/BW_NIC+lat_remote)+static_latency",
+      "notes": "native按实际TP/EP、张量形状、精度和放置生成端点字节。以上是相应算法分支，不是把三条公式对每个算子无条件相加；EP零流量分支不收取该分支延迟。EP本地/远端分支允许max重叠，这是池内模型，不能据此给跨池shared_fabric也加重叠收益。词表AllGather用本rank输出分片，AllReduce用本rankpayload；不能套用整批跨池AF载荷。",
+      "variables": "",
+      "source_anchor": "trace['serial_time_ns'] =",
+      "steps": [
+        "Rubin运行器令EP组与72卡机架片段相容，DP副本可跨机架。GPU数影响TP/EP映射与PD缓存副本，不直接提高共享跨池带宽。",
+        "groq-lpx3的p2p_bw与gpu_scale_bw是不同字段；不能把2500 GB/s的C2C字段用于所有collective，更不能用于跨池或外部DRAM。",
+        "具体native分支、source anchors和端点通信公式可查硬件公式页：hw-vocab-allgather、hw-ring-allreduce、hw-hierarchical-allreduce、hw-ep-branch-overlap。"
+      ],
+      "tables": [],
+      "references": [
+        "hardware_formulas.html#hw-vocab-allgather",
+        "hardware_formulas.html#hw-ring-allreduce",
+        "hardware_formulas.html#hw-hierarchical-allreduce",
+        "hardware_formulas.html#hw-ep-branch-overlap"
+      ],
+      "domain": "algorithm",
+      "source": {
+        "file": "scripts/evaluate_deepseek_v41.py",
+        "line": 93,
+        "sha256": "737aa10b19a4e88f17d9ee963537ea1f67a3216e64d28ac115741cdec3754bce",
+        "excerpt": "    trace['comm_time_ns'] = [float(comm.iloc[i]) for i in backmap]\n    trace['serial_time_ns'] = trace['op_time_ns']+trace['comm_time_ns']\n    trace['layer_id'] = [n['layer_id'] for n in graph['cost_graphs'][phase]['nodes']]\n    seconds = float(trace['serial_time_ns'].sum())/1e9\n    if seconds <= 0:\n        raise RuntimeError('Invalid total native latency')\n    return seconds, trace\n\n\ndef report_text(results, graphs, inventory, args, provenance):\n    m = graphs['packed']['model'] if 'packed' in graphs else next(iter(graphs.values()))['model']\n    lines = ['# DeepSeek V4.1 Flash graph and performance estimate', '',\n        f'Model: [{MODEL_ID}](https://huggingface.co/{MODEL_ID}). Revision: `{provenance[\"revision\"]}`.', '',\n        f'Hardware: {args.gpu_count} × {args.gpu_name}; attention TP={args.gpu_count}, FFN EP={args.gpu_count}; '\n        'DP=CP=PP=1. Batch denotes concurrent requests for the entire group.',\n        f'Input={args.input_len}, output={args.output_len}; text-only, cold prefill, no DSpark; '\n        'FP8 main projections / FP4 routed weights with FP8 GEMM compute proxy / BF16 grouped O-A / FP32 head.', '',\n        'These are analytical native cost-model estimates, not measured GPU inference. '\n        'The packed scenario approximates the optimized deployment architecture; the reference scenario '\n        'uses full-depth prefill and BF16 cache storage, as in the released minimal implementation. '\n        'Both use the same existing native kernel estimators, not PyTorch wall-clock timing.', '',"
+      }
+    },
+    {
+      "id": "algo-communication-external",
+      "title": "外部DRAM ↔ SRAM：容量够了仍要付搬运时间",
+      "category": "GPU/LPU 数据传输",
+      "equation": "C_external=32×10^9 bytes/chip; C_SRAM=0.5×2^30 bytes/chip; host excluded\nBW_external,chip=2736.072/8=342.009 GB/s (scenario assumption)\nS_external,chip=p×E_weights+2p×E_cache+2L_pool×E_activation\nT_external=S_external,chip/(BW_external,chip×10^9)\nT_stage=T_native,SRAM+T_external",
+      "notes": "E_*为按cache→activation reserve→weights顺序占用SRAM后溢出的逐颗字节。外部容量按官方托盘最大fabric配置均摊；主机内存单列排除。lpddr是历史字段名，不代表已核实LPDDR6型号；342.009 GB/s为仓库未校准假设。当前没有外部DRAM启动延迟项或逐transaction延迟模型，不能借用NIC的6 μs，也不能声称物理DRAM延迟为零。",
+      "variables": "",
+      "source_anchor": "def transfer_cost",
+      "steps": [
+        "prefill的p为ceil(B/(4×attention_DP))；draft decode p=5，主verify p=1。L_pool为主模型或draft层数。",
+        "所有溢出专家权重保守流式读取；cache按完整读写、activation按逐层读写。activation已经含整batch/query窗口，不再乘p。",
+        "每颗带宽已经是托盘带宽的1/8；整池同步时间使用这笔逐颗延迟，不能再乘256颗。",
+        "此时间已经进入各LPU阶段和最终性能指标；页面memory_transfers是拆账，不能在E2E或shared_fabric上重复相加。"
+      ],
+      "tables": [],
       "domain": "algorithm",
       "source": {
         "file": "llm_perf/core/memory_tiers.py",

@@ -19,5 +19,11 @@
   };
   search.addEventListener("input", update);
   category.addEventListener("change", update);
+  document.getElementById("deployment-communication")?.addEventListener("click", event => {
+    if (!event.target.closest('a[href^="#"]')) return;
+    search.value = "";
+    category.value = "";
+    update();
+  });
   update();
 })();
